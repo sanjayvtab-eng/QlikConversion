@@ -2,8 +2,8 @@ import json
 
 import streamlit as st
 
-from agents.migration_agent import MigrationAgent
-from generators.m_generator import MGenerator
+from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
+from QlikToPowerBIConverter.generators.m_generator import MGenerator
 
 
 st.set_page_config(page_title="QlikToPowerBIConverter", page_icon="🔁", layout="wide")
