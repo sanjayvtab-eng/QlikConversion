@@ -6,10 +6,39 @@ class KnowledgeLoader:
     """Loads the Qlik migration rulebook used by the migration agent."""
 
     def __init__(self, base_dir: str):
-        self.base_dir = Path(base_dir)
+        self.base_dir = Path(base_dir).resolve()
+        # Try to find the knowledge directory
+        self.knowledge_dir = self._find_knowledge_dir()
+
+    def _find_knowledge_dir(self) -> Path:
+        """Find the knowledge directory by searching common locations."""
+        # First, try base_dir/knowledge
+        if (self.base_dir / "knowledge").exists():
+            return self.base_dir / "knowledge"
+        
+        # If base_dir is the package dir (e.g., QlikToPowerBIConverter), knowledge is direct child
+        if (self.base_dir / "knowledge").exists():
+            return self.base_dir / "knowledge"
+        
+        # If base_dir is repo root, knowledge is in QlikToPowerBIConverter/knowledge
+        if (self.base_dir / "QlikToPowerBIConverter" / "knowledge").exists():
+            return self.base_dir / "QlikToPowerBIConverter" / "knowledge"
+        
+        # Try using this module's location (package-relative)
+        module_dir = Path(__file__).parent.parent  # Go up from utils/ to QlikToPowerBIConverter/
+        if (module_dir / "knowledge").exists():
+            return module_dir / "knowledge"
+        
+        # Last resort: raise error with helpful message
+        raise FileNotFoundError(
+            f"Cannot find 'knowledge' directory. Searched in:\n"
+            f"  - {self.base_dir / 'knowledge'}\n"
+            f"  - {self.base_dir / 'QlikToPowerBIConverter' / 'knowledge'}\n"
+            f"  - {module_dir / 'knowledge'}\n"
+        )
 
     def load_rules(self) -> str:
-        rule_file = self.base_dir / "knowledge" / "qlik_rules.md"
+        rule_file = self.knowledge_dir / "qlik_rules.md"
         if not rule_file.exists():
             raise FileNotFoundError(f"Rulebook not found: {rule_file}")
         return rule_file.read_text(encoding="utf-8")
