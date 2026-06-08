@@ -2,7 +2,7 @@
 
 // Load from database
 Customers:
-LOAD 
+LOAD
     CustomerID,
     CustomerName,
     City,
@@ -11,7 +11,7 @@ FROM [lib://DataWarehouse/Customers.qvd];
 
 // Load from CSV with transformation
 Sales:
-LOAD 
+LOAD
     OrderID,
     CustomerID,
     OrderDate,
@@ -22,19 +22,21 @@ WHERE Amount > 100;
 
 // Resident Load - Reference previous table
 SalesWithCustomer:
-LOAD 
+LOAD
     Sales.OrderID,
     Sales.Amount,
     Customers.CustomerName,
     Sales.Quantity * Sales.Amount as TotalValue
 RESIDENT Sales
 LEFT JOIN (Sales)
-LOAD CustomerID, CustomerName
+LOAD
+    CustomerID,
+    CustomerName
 RESIDENT Customers;
 
 // Group By aggregation
 MonthlySales:
-LOAD 
+LOAD
     DATE(OrderDate, 'YYYY-MM') as Month,
     SUM(Amount) as TotalSales,
     COUNT(OrderID) as OrderCount,

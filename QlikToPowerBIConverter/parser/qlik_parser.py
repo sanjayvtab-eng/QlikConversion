@@ -89,13 +89,15 @@ class QlikParser:
 
             if re.search(r"\bDROP\s+FIELD\b", stripped, re.I):
                 drop_match = re.search(r"DROP\s+FIELD\s+(.*?)(?=;|$)", stripped, re.I)
-                drop_fields.append({"fields": [item.strip() for item in drop_match.group(1).split(',') if item.strip()], "line": lines.index(line) + 1})
-                transformations.append({"type": "DROP FIELD", "line": lines.index(line) + 1, "fields": [item.strip() for item in drop_match.group(1).split(',') if item.strip()]})
+                if drop_match:
+                    drop_fields.append({"fields": [item.strip() for item in drop_match.group(1).split(',') if item.strip()], "line": lines.index(line) + 1})
+                    transformations.append({"type": "DROP FIELD", "line": lines.index(line) + 1, "fields": [item.strip() for item in drop_match.group(1).split(',') if item.strip()]})
 
             if re.search(r"\bRENAME\s+FIELD\b", stripped, re.I):
                 rename_match = re.search(r"RENAME\s+FIELD\s+(.*?)(?=;|$)", stripped, re.I)
-                rename_fields.append({"mapping": rename_match.group(1).strip(), "line": lines.index(line) + 1})
-                transformations.append({"type": "RENAME FIELD", "line": lines.index(line) + 1, "mapping": rename_match.group(1).strip()})
+                if rename_match:
+                    rename_fields.append({"mapping": rename_match.group(1).strip(), "line": lines.index(line) + 1})
+                    transformations.append({"type": "RENAME FIELD", "line": lines.index(line) + 1, "mapping": rename_match.group(1).strip()})
 
             if re.search(r"\bSTORE\b", stripped, re.I):
                 store_statements.append({"statement": stripped, "line": lines.index(line) + 1})
