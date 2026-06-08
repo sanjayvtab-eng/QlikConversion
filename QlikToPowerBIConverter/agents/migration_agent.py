@@ -1,5 +1,5 @@
-from parser.qlik_parser import QlikParser
-from utils.knowledge_loader import KnowledgeLoader
+from QlikToPowerBIConverter.parser.qlik_parser import QlikParser
+from QlikToPowerBIConverter.utils.knowledge_loader import KnowledgeLoader
 
 
 class MigrationAgent:
