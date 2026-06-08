@@ -1,3 +1,6 @@
+import os
+from pathlib import Path
+
 from QlikToPowerBIConverter.parser.qlik_parser import QlikParser
 from QlikToPowerBIConverter.utils.knowledge_loader import KnowledgeLoader
 
@@ -8,7 +11,16 @@ class MigrationAgent:
     def __init__(self, base_dir: str):
         self.base_dir = base_dir
         self.parser = QlikParser()
-        self.knowledge_loader = KnowledgeLoader(base_dir)
+        
+        # Resolve base_dir: if it's "." or doesn't have a knowledge folder,
+        # use the package directory instead
+        resolved_dir = Path(base_dir).resolve()
+        if not (resolved_dir / "knowledge").exists():
+            # Fall back to the package's directory
+            package_dir = Path(__file__).parent.parent
+            resolved_dir = package_dir
+        
+        self.knowledge_loader = KnowledgeLoader(str(resolved_dir))
 
     def analyze(self, script: str) -> dict:
         rulebook = self.knowledge_loader.load_rules()
