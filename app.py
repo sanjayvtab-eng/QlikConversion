@@ -31,6 +31,12 @@ import streamlit as st
 from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
 from QlikToPowerBIConverter.generators.m_generator import MGenerator
 
+# Ensure uploads directories exist (repo root and package) so deployed
+# instances (Render) have the folders available for saving files.
+base_dir = os.path.abspath(os.path.dirname(__file__))
+os.makedirs(os.path.join(base_dir, "uploads"), exist_ok=True)
+os.makedirs(os.path.join(base_dir, "QlikToPowerBIConverter", "uploads"), exist_ok=True)
+
 
 st.set_page_config(page_title="QlikToPowerBIConverter", page_icon="🔁", layout="wide")
 

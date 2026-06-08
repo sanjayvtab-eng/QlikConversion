@@ -1,0 +1,8 @@
+[server]
+enableCORS = false
+enableXsrfProtection = false
+enableWebsocketCompression = false
+headless = true
+
+# Keep the root app file path since Render runs from the repository root.
+# The port is set by Render through the $PORT variable in the start command.
