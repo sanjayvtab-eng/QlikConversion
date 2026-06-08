@@ -25,7 +25,7 @@ class QlikParser:
     }
 
     def extract_metadata(self, script: str) -> Dict[str, object]:
-        lines = self.extract_lines(script)
+        lines = script.splitlines()
         tables = []
         sources = []
         columns = []
@@ -38,77 +38,156 @@ class QlikParser:
         rename_fields = []
         drop_fields = []
         derived_columns = []
+        load_steps = []
 
-        for line in lines:
-            stripped = line.strip()
-            if re.match(r"^[A-Za-z_][A-Za-z0-9_\-]*\s*:\s*$", stripped):
-                tables.append({"name": stripped.replace(':', '').strip(), "line": lines.index(line) + 1})
-
-            if re.search(r"\bLOAD\b", stripped, re.I):
-                load_match = re.search(r"LOAD\s+(.*?)(?:FROM|WHERE|GROUP\s+BY|;|$)", stripped, re.I | re.S)
-                if load_match:
-                    raw_columns = load_match.group(1)
-                    parsed_columns = [c.strip().split(" as ")[0].strip("[]") for c in raw_columns.split(',') if c.strip()]
-                    columns.extend([{"name": c, "source": "LOAD", "line": lines.index(line) + 1} for c in parsed_columns if c])
-                    transformations.append({"type": "LOAD", "line": lines.index(line) + 1, "columns": parsed_columns})
-
-            if re.search(r"\bFROM\b", stripped, re.I):
-                source_match = re.search(r"FROM\s+([^\s;]+)", stripped, re.I)
-                if source_match:
-                    src = source_match.group(1).strip("'\"")
-                    sources.append({"path": src, "line": lines.index(line) + 1})
-
-            join_match = re.search(r"\b(LEFT|INNER|RIGHT|OUTER)\s+JOIN\b|\bJOIN\b", stripped, re.I)
-            if join_match:
-                join_type = join_match.group(1) or "JOIN"
-                join_type = join_type.upper()
-                if join_type == "JOIN":
-                    join_label = "JOIN"
+        def split_load_columns(raw_columns: str) -> list[dict]:
+            items = [item.strip() for item in re.split(r',(?![^\(]*\))', raw_columns) if item.strip()]
+            parsed = []
+            for item in items:
+                alias_match = re.search(r"\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$", item, re.I)
+                if alias_match:
+                    name = alias_match.group(1).strip()
                 else:
-                    join_label = f"{join_type} JOIN"
-                joins.append({"type": join_label, "line": lines.index(line) + 1, "statement": stripped})
-                transformations.append({"type": join_label, "line": lines.index(line) + 1, "detail": stripped})
+                    name = item.split('.')[-1].strip('[] ').strip()
+                parsed.append({"name": name, "raw": item})
+            return parsed
 
-            if re.search(r"\bCONCATENATE\b", stripped, re.I):
-                transformations.append({"type": "CONCATENATE", "line": lines.index(line) + 1, "detail": stripped})
+        def add_statement(statement_text: str, line_number: int, table_name: str | None):
+            normalized = re.sub(r"(?<!:)//.*", "", statement_text)
+            normalized = re.sub(r"\s+", " ", normalized).strip()
+            source_path = None
+            resident_table = None
+            join_type = None
+            join_target = None
+            load_columns = []
 
-            if re.search(r"\bAPPLYMAP\b", stripped, re.I):
-                apply_match = re.search(r"APPLYMAP\((.*)\)", stripped, re.I)
-                transformations.append({"type": "APPLYMAP", "line": lines.index(line) + 1, "detail": apply_match.group(1) if apply_match else stripped})
+            load_match = re.search(r"LOAD\s+(.*?)(?:FROM|RESIDENT|WHERE|GROUP\s+BY|;|$)", normalized, re.I | re.S)
+            if load_match:
+                raw_columns = load_match.group(1)
+                parsed_columns = split_load_columns(raw_columns)
+                load_columns = [item["name"] for item in parsed_columns if item["name"]]
+                columns.extend([{"name": name, "source": "LOAD", "line": line_number} for name in load_columns])
 
-            where_match = re.search(r"\bWHERE\s+(.*?)(?=;|$)", stripped, re.I)
+            source_match = re.search(r"FROM\s+(\[[^\]]+\]|'[^']*'|\"[^\"]*\"|[^\s;]+)", normalized, re.I)
+            if source_match:
+                source_path = source_match.group(1).strip("'\"[]")
+                sources.append({"path": source_path, "line": line_number})
+
+            join_match = re.search(r"\b(LEFT|INNER|RIGHT|OUTER)?\s*JOIN\b", normalized, re.I)
+            if join_match:
+                join_keyword = join_match.group(1)
+                if join_keyword:
+                    join_type = f"{join_keyword.upper()} JOIN"
+                else:
+                    join_type = "JOIN"
+                join_target_match = re.search(r"JOIN\s*\(([^)]+)\)", normalized, re.I)
+                if join_target_match:
+                    join_target = join_target_match.group(1).strip()
+                resident_matches = re.findall(r"RESIDENT\s+([A-Za-z_][A-Za-z0-9_]*)", normalized, re.I)
+                if resident_matches:
+                    resident_table = resident_matches[-1].strip()
+                joins.append({"type": join_type, "line": line_number, "statement": normalized, "join_target": join_target, "resident_table": resident_table})
+                transformations.append({"type": join_type, "line": line_number, "detail": normalized})
+            else:
+                resident_match = re.search(r"RESIDENT\s+([A-Za-z_][A-Za-z0-9_]*)", normalized, re.I)
+                if resident_match:
+                    resident_table = resident_match.group(1).strip()
+
+            if load_match:
+                transformations.append({
+                    "type": "LOAD",
+                    "line": line_number,
+                    "columns": load_columns,
+                    "source": source_path,
+                    "resident": resident_table,
+                    "table": table_name,
+                })
+                load_steps.append({
+                    "table": table_name,
+                    "columns": load_columns,
+                    "source_path": source_path,
+                    "resident_table": resident_table,
+                    "join_type": join_type,
+                    "join_target": join_target,
+                    "statement": normalized,
+                    "line": line_number,
+                })
+
+            if re.search(r"\bCONCATENATE\b", normalized, re.I):
+                transformations.append({"type": "CONCATENATE", "line": line_number, "detail": normalized})
+
+            if re.search(r"\bAPPLYMAP\b", normalized, re.I):
+                apply_match = re.search(r"APPLYMAP\((.*)\)", normalized, re.I)
+                transformations.append({"type": "APPLYMAP", "line": line_number, "detail": apply_match.group(1) if apply_match else normalized})
+
+            where_match = re.search(r"\bWHERE\s+(.*?)(?=;|$)", normalized, re.I)
             if where_match:
-                filters.append({"expression": where_match.group(1).strip(), "line": lines.index(line) + 1})
-                transformations.append({"type": "WHERE", "line": lines.index(line) + 1, "expression": where_match.group(1).strip()})
+                filters.append({"expression": where_match.group(1).strip(), "line": line_number})
+                transformations.append({"type": "WHERE", "line": line_number, "expression": where_match.group(1).strip()})
 
-            group_match = re.search(r"\bGROUP\s+BY\s+(.*?)(?=;|$)", stripped, re.I)
+            group_match = re.search(r"\bGROUP\s+BY\s+(.*?)(?=;|$)", normalized, re.I)
             if group_match:
-                groups = [item.strip() for item in group_match.group(1).split(',') if item.strip()]
-                aggregations.append({"group_by": groups, "line": lines.index(line) + 1})
-                transformations.append({"type": "GROUP BY", "line": lines.index(line) + 1, "group_by": groups})
+                groups = [item.strip() for item in re.split(r',(?![^\(]*\))', group_match.group(1)) if item.strip()]
+                aggregations.append({"group_by": groups, "line": line_number})
+                transformations.append({"type": "GROUP BY", "line": line_number, "group_by": groups})
 
-            if re.search(r"\bDROP\s+FIELD\b", stripped, re.I):
-                drop_match = re.search(r"DROP\s+FIELD\s+(.*?)(?=;|$)", stripped, re.I)
+            if re.search(r"\bDROP\s+FIELD\b", normalized, re.I):
+                drop_match = re.search(r"DROP\s+FIELD\s+(.*?)(?:\s+FROM\b|;|$)", normalized, re.I)
                 if drop_match:
-                    drop_fields.append({"fields": [item.strip() for item in drop_match.group(1).split(',') if item.strip()], "line": lines.index(line) + 1})
-                    transformations.append({"type": "DROP FIELD", "line": lines.index(line) + 1, "fields": [item.strip() for item in drop_match.group(1).split(',') if item.strip()]})
+                    fields = [item.strip() for item in drop_match.group(1).split(',') if item.strip()]
+                    drop_fields.append({"fields": fields, "line": line_number})
+                    transformations.append({"type": "DROP FIELD", "line": line_number, "fields": fields})
 
-            if re.search(r"\bRENAME\s+FIELD\b", stripped, re.I):
-                rename_match = re.search(r"RENAME\s+FIELD\s+(.*?)(?=;|$)", stripped, re.I)
+            if re.search(r"\bRENAME\s+FIELD\b", normalized, re.I):
+                rename_match = re.search(r"RENAME\s+FIELD\s+(.*?)(?=;|$)", normalized, re.I)
                 if rename_match:
-                    rename_fields.append({"mapping": rename_match.group(1).strip(), "line": lines.index(line) + 1})
-                    transformations.append({"type": "RENAME FIELD", "line": lines.index(line) + 1, "mapping": rename_match.group(1).strip()})
+                    rename_fields.append({"mapping": rename_match.group(1).strip(), "line": line_number})
+                    transformations.append({"type": "RENAME FIELD", "line": line_number, "mapping": rename_match.group(1).strip()})
 
-            if re.search(r"\bSTORE\b", stripped, re.I):
-                store_statements.append({"statement": stripped, "line": lines.index(line) + 1})
+            if re.search(r"\bSTORE\b", normalized, re.I):
+                store_statements.append({"statement": normalized, "line": line_number})
 
-            var_match = re.search(r"\b(LET|SET)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)", stripped, re.I)
+            var_match = re.search(r"\b(LET|SET)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)", normalized, re.I)
             if var_match:
-                variables.append({"type": var_match.group(1).upper(), "name": var_match.group(2), "expression": var_match.group(3).strip(), "line": lines.index(line) + 1})
+                variables.append({"type": var_match.group(1).upper(), "name": var_match.group(2), "expression": var_match.group(3).strip(), "line": line_number})
 
-            derived_match = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*\=\s*(.*)", stripped)
-            if derived_match and not re.search(r"\b(LET|SET|LOAD|FROM|WHERE|GROUP|JOIN|STORE|RENAME|DROP)\b", stripped, re.I):
-                derived_columns.append({"name": derived_match.group(1), "expression": derived_match.group(2).strip(), "line": lines.index(line) + 1})
+            derived_match = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)", normalized)
+            if derived_match and not re.search(r"\b(LET|SET|LOAD|FROM|WHERE|GROUP|JOIN|STORE|RENAME|DROP)\b", normalized, re.I):
+                derived_columns.append({"name": derived_match.group(1), "expression": derived_match.group(2).strip(), "line": line_number})
+
+        current_statement = []
+        current_start = 1
+        pending_table = None
+
+        for line_index, raw_line in enumerate(lines):
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+
+            label_match = re.match(r"^([A-Za-z_][A-Za-z0-9_\-]*)\s*:\s*$", stripped)
+            if label_match:
+                if current_statement:
+                    add_statement(" ".join(current_statement), current_start, pending_table)
+                    current_statement = []
+                pending_table = label_match.group(1).strip()
+                tables.append({"name": pending_table, "line": line_index + 1})
+                continue
+
+            code_line = re.sub(r"(?<!:)//.*$", "", stripped).strip()
+            if not code_line:
+                continue
+
+            if not current_statement:
+                current_start = line_index + 1
+            current_statement.append(code_line)
+
+            if code_line.endswith(";"):
+                add_statement(" ".join(current_statement), current_start, pending_table)
+                current_statement = []
+                pending_table = None
+
+        if current_statement:
+            add_statement(" ".join(current_statement), current_start, pending_table)
 
         return {
             "tables": tables,
@@ -123,6 +202,7 @@ class QlikParser:
             "rename_fields": rename_fields,
             "drop_fields": drop_fields,
             "derived_columns": derived_columns,
+            "load_steps": load_steps,
             "warnings": [],
         }
 
