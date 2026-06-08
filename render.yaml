@@ -3,4 +3,15 @@ services:
     name: qlik-to-powerbi-converter
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app.py --server.port $PORT --server.enableCORS false --server.enableXsrfProtection false
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.enableCORS false --server.enableXsrfProtection false --server.enableWebsocketCompression false --server.headless true --logger.level=debug
+    envVars:
+      - key: STREAMLIT_SERVER_ENABLECORS
+        value: "false"
+      - key: STREAMLIT_SERVER_ENABLEXSRFPROTECTION
+        value: "false"
+      - key: STREAMLIT_SERVER_ADDRESS
+        value: "0.0.0.0"
+      - key: STREAMLIT_SERVER_HEADLESS
+        value: "true"
+      - key: STREAMLIT_LOG_LEVEL
+        value: "debug"
