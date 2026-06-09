@@ -63,6 +63,26 @@ class MGenerator:
                 type_map[col] = "type text"
         return type_map
 
+    def _normalize_type_value(self, value: str) -> str:
+        """Normalize a simple type keyword or return the M type string as-is.
+
+        Accepts inputs like 'text', 'number', 'int', 'Int64.Type', 'type date', etc.
+        """
+        if not isinstance(value, str) or not value:
+            return "type any"
+        v = value.strip()
+        lv = v.lower()
+        if lv in ("text", "string"):
+            return "type text"
+        if lv in ("number", "decimal", "float"):
+            return "type number"
+        if lv in ("int", "int64", "integer"):
+            return "Int64.Type"
+        if lv in ("date", "datetime"):
+            return "type date"
+        # If the caller provided a full M type expression, use it directly
+        return v
+
     def _format_filter_expression(self, expression: str) -> str:
         simple_match = re.match(r"([A-Za-z0-9_\.\[\]]+)\s*(=|<>|>=|<=|>|<)\s*(.+)", expression.strip())
         if simple_match:
@@ -184,7 +204,13 @@ class MGenerator:
         column_names = sorted({item["name"] for item in columns if item.get("name")})
         if column_names:
             type_map = self._infer_column_types(column_names)
-            type_list = ", ".join(f'{{\"{col}\", {type_map.get(col, "type any")}}}' for col in column_names)
+            # Allow explicit overrides from metadata: metadata["column_types"] = {"Country": "text"}
+            overrides = metadata.get("column_types", {}) if isinstance(metadata, dict) else {}
+            for col, tv in overrides.items():
+                if col in type_map:
+                    type_map[col] = self._normalize_type_value(tv)
+
+            type_list = ", ".join(f'{{"{col}", {type_map.get(col, "type any")}}}' for col in column_names)
             type_spec = "{" + type_list + "}"
             lines.append(
                 f"    TypedColumns = Table.TransformColumnTypes({current_step}, {type_spec}),"
