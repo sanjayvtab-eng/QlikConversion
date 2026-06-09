@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 import re
 
 class MGenerator:
@@ -41,28 +41,29 @@ class MGenerator:
     def _infer_column_types(self, columns: list[str]) -> dict[str, str]:
         """Infer basic column types from column names."""
         type_map = {}
-        int_keywords = ["id", "count", "qty", "quantity"]
-        date_keywords = ["date", "created", "updated"]
-        number_keywords = ["amount", "price", "total", "value"]
 
         for col in columns:
             lower_col = col.lower()
+            tokens = re.findall(r"[a-z0-9]+", lower_col)
 
-            def has_keyword(kw: str) -> bool:
-                # Match the keyword only when it's not immediately followed by a letter
-                # This prevents matching 'count' inside words like 'country'.
-                return re.search(rf"{re.escape(kw)}(?![a-z])", lower_col) is not None
-
-            if any(has_keyword(x) for x in int_keywords):
+            if any(t == "id" or t.endswith("id") for t in tokens):
                 type_map[col] = "Int64.Type"
-            elif any(has_keyword(x) for x in date_keywords):
-                type_map[col] = "type date"
-            elif any(has_keyword(x) for x in number_keywords):
-                type_map[col] = "type number"
-            else:
-                type_map[col] = "type text"
-        return type_map
+                continue
 
+            if any(t in {"count", "qty", "quantity"} for t in tokens):
+                type_map[col] = "Int64.Type"
+                continue
+
+            if any(t in {"date", "created", "updated", "datetime"} for t in tokens):
+                type_map[col] = "type date"
+                continue
+
+            if any(t in {"amount", "price", "total", "value", "number", "num"} for t in tokens):
+                type_map[col] = "type number"
+                continue
+
+            type_map[col] = "type text"
+        return type_map
     def _normalize_type_value(self, value: str) -> str:
         """Normalize a simple type keyword or return the M type string as-is.
 
@@ -255,3 +256,4 @@ class MGenerator:
         lines.append(f"    {current_step}")
 
         return "\n".join(lines)
+
