@@ -19,6 +19,15 @@ if uploaded_file is not None:
 
     st.subheader("Uploaded script")
     st.code(raw_text, language="text")
+    # Save uploaded file to uploads folder and log for debugging on Render
+    try:
+        base_dir = os.path.abspath(os.path.dirname(__file__))
+        upload_path = os.path.join(base_dir, "uploads", uploaded_file.name)
+        with open(upload_path, "wb") as f:
+            f.write(uploaded_file.getvalue())
+        print(f"[UPLOAD] Saved file to: {upload_path} ({os.path.getsize(upload_path)} bytes)")
+    except Exception as ex:
+        print(f"[UPLOAD] Error saving uploaded file: {ex}")
 
     if st.button("Generate Power Query M"):
         try:

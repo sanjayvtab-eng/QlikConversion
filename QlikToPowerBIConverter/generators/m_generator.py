@@ -41,13 +41,23 @@ class MGenerator:
     def _infer_column_types(self, columns: list[str]) -> dict[str, str]:
         """Infer basic column types from column names."""
         type_map = {}
+        int_keywords = ["id", "count", "qty", "quantity"]
+        date_keywords = ["date", "created", "updated"]
+        number_keywords = ["amount", "price", "total", "value"]
+
         for col in columns:
             lower_col = col.lower()
-            if any(x in lower_col for x in ["id", "count", "qty", "quantity", "amount", "price"]):
+
+            def has_keyword(kw: str) -> bool:
+                # Match the keyword only when it's not immediately followed by a letter
+                # This prevents matching 'count' inside words like 'country'.
+                return re.search(rf"{re.escape(kw)}(?![a-z])", lower_col) is not None
+
+            if any(has_keyword(x) for x in int_keywords):
                 type_map[col] = "Int64.Type"
-            elif any(x in lower_col for x in ["date", "created", "updated"]):
+            elif any(has_keyword(x) for x in date_keywords):
                 type_map[col] = "type date"
-            elif any(x in lower_col for x in ["amount", "price", "total", "value"]):
+            elif any(has_keyword(x) for x in number_keywords):
                 type_map[col] = "type number"
             else:
                 type_map[col] = "type text"
