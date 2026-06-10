@@ -1,9 +1,13 @@
 import json
+import os
 
 import streamlit as st
+from streamlit_upload_post_patch import allow_upload_post
 
 from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
 from QlikToPowerBIConverter.generators.m_generator import MGenerator
+
+allow_upload_post()
 
 def disable_streamlit_upload_xsrf_check() -> None:
     """Avoid Render-hosted upload 403s from Streamlit's internal upload route."""

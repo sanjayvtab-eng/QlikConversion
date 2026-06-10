@@ -17,7 +17,9 @@ except Exception:
 import json
 import base64
 import streamlit as st
-import streamlit.components.v1 as components
+from streamlit_upload_post_patch import allow_upload_post
+
+allow_upload_post()
 
 try:
     from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
@@ -38,24 +40,6 @@ st.caption("Upload a Qlik script (.qvs) to analyze ETL logic and generate Power 
 if not _imports_ok:
     st.error(f"Import error: {_import_err_msg}")
     st.stop()
-
-# ── File uploader using session_state + hidden text_input ──────────────────
-# components.html() cannot use Streamlit.setComponentValue reliably.
-# Instead: the HTML iframe posts a message to the parent window, and a small
-# JS snippet in the main page catches it and stuffs it into a hidden
-# st.text_area via DOM manipulation — then triggers a Streamlit rerun.
-#
-# Simpler approach that actually works: use st.file_uploader but wrap it so
-# the bytes are read via getvalue() which never touches the PUT endpoint.
-# The 403 on Render/Cloudflare happens ONLY when Streamlit tries to persist
-# the file to its temp storage. getvalue() reads from the in-memory buffer
-# BEFORE that persistence happens — so it works even when the PUT fails.
-#
-# Key insight: st.file_uploader still returns the UploadedFile object with
-# the bytes available via getvalue() even if the background PUT 403s.
-# The "AxiosError 403" shown in the UI is just a cosmetic error from the
-# failed persistence attempt — the data is already in memory.
-# We just need to suppress the error display and read immediately.
 
 uploaded_file = st.file_uploader(
     "Upload Qlik script",

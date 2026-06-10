@@ -10,6 +10,16 @@ try:
 except Exception:
     pass
 
+# Render's edge can reject Streamlit's default PUT upload request before it
+# reaches the app. Accept POST too; patch_streamlit_upload.py rewrites only
+# the frontend upload request.
+try:
+    from streamlit_upload_post_patch import allow_upload_post
+
+    allow_upload_post()
+except Exception:
+    pass
+
 # Also set via config as a belt-and-suspenders approach
 try:
     from streamlit import config as _st_config
