@@ -24,12 +24,16 @@ try:
 except Exception:
     pass
 
-# Execute the Streamlit UI from the package
-import json
-import streamlit as st
-
-# Force-disable XSRF protection programmatically so it takes effect before
-# Streamlit builds its upload routes (CLI flags arrive too late on Render).
+# ── XSRF fix ────────────────────────────────────────────────────────────────
+# On Render (Streamlit 1.58) the upload route is built before CLI flags are
+# applied, so --server.enableXsrfProtection=false arrives too late.
+# We disable it three ways to guarantee it sticks regardless of timing:
+#
+#   1. config.set_option  – covers the normal config path
+#   2. Patch server_util  – covers is_xsrf_enabled() called from middleware
+#   3. Patch starlette_routes – covers is_xsrf_enabled() called inside the
+#      upload route closure (_check_xsrf)
+# ---------------------------------------------------------------------------
 try:
     from streamlit import config as _st_config
     _st_config.set_option("server.enableXsrfProtection", False)
@@ -37,11 +41,26 @@ try:
 except Exception:
     pass
 
+try:
+    import streamlit.web.server.server_util as _su
+    _su.is_xsrf_enabled = lambda: False
+except Exception:
+    pass
+
+try:
+    import streamlit.web.server.starlette.starlette_routes as _sr
+    _sr.is_xsrf_enabled = lambda: False
+except Exception:
+    pass
+# ── end XSRF fix ────────────────────────────────────────────────────────────
+
+import json
+import streamlit as st
+
 from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
 from QlikToPowerBIConverter.generators.m_generator import MGenerator
 
-# Ensure uploads directories exist (repo root and package) so deployed
-# instances (Render) have the folders available for saving files.
+# Ensure uploads directories exist
 base_dir = os.path.abspath(os.path.dirname(__file__))
 os.makedirs(os.path.join(base_dir, "uploads"), exist_ok=True)
 os.makedirs(os.path.join(base_dir, "QlikToPowerBIConverter", "uploads"), exist_ok=True)
@@ -60,12 +79,10 @@ if uploaded_file is not None:
 
     st.subheader("Uploaded script")
     st.code(raw_text, language="text")
-    # Save uploaded file to uploads folder and log for debugging on Render
     try:
         upload_path = os.path.join(base_dir, "uploads", uploaded_file.name)
         with open(upload_path, "wb") as f:
             f.write(uploaded_file.getvalue())
-        # Also save inside package uploads
         pkg_upload_path = os.path.join(base_dir, "QlikToPowerBIConverter", "uploads", uploaded_file.name)
         with open(pkg_upload_path, "wb") as f:
             f.write(uploaded_file.getvalue())
