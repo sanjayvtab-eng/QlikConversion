@@ -5,6 +5,19 @@ import streamlit as st
 from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
 from QlikToPowerBIConverter.generators.m_generator import MGenerator
 
+def disable_streamlit_upload_xsrf_check() -> None:
+    """Avoid Render-hosted upload 403s from Streamlit's internal upload route."""
+    try:
+        from streamlit.web.server import server_util
+        from streamlit.web.server.starlette import starlette_routes
+
+        server_util.is_xsrf_enabled = lambda: False
+        starlette_routes.is_xsrf_enabled = lambda: False
+    except Exception:
+        pass
+
+
+disable_streamlit_upload_xsrf_check()
 
 st.set_page_config(page_title="QlikToPowerBIConverter", page_icon="🔁", layout="wide")
 
