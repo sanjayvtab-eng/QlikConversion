@@ -24,36 +24,6 @@ try:
 except Exception:
     pass
 
-# ── XSRF fix ────────────────────────────────────────────────────────────────
-# On Render (Streamlit 1.58) the upload route is built before CLI flags are
-# applied, so --server.enableXsrfProtection=false arrives too late.
-# We disable it three ways to guarantee it sticks regardless of timing:
-#
-#   1. config.set_option  – covers the normal config path
-#   2. Patch server_util  – covers is_xsrf_enabled() called from middleware
-#   3. Patch starlette_routes – covers is_xsrf_enabled() called inside the
-#      upload route closure (_check_xsrf)
-# ---------------------------------------------------------------------------
-try:
-    from streamlit import config as _st_config
-    _st_config.set_option("server.enableXsrfProtection", False)
-    _st_config.set_option("server.enableCORS", False)
-except Exception:
-    pass
-
-try:
-    import streamlit.web.server.server_util as _su
-    _su.is_xsrf_enabled = lambda: False
-except Exception:
-    pass
-
-try:
-    import streamlit.web.server.starlette.starlette_routes as _sr
-    _sr.is_xsrf_enabled = lambda: False
-except Exception:
-    pass
-# ── end XSRF fix ────────────────────────────────────────────────────────────
-
 import json
 import streamlit as st
 
@@ -64,7 +34,6 @@ from QlikToPowerBIConverter.generators.m_generator import MGenerator
 base_dir = os.path.abspath(os.path.dirname(__file__))
 os.makedirs(os.path.join(base_dir, "uploads"), exist_ok=True)
 os.makedirs(os.path.join(base_dir, "QlikToPowerBIConverter", "uploads"), exist_ok=True)
-
 
 st.set_page_config(page_title="QlikToPowerBIConverter", page_icon="🔁", layout="wide")
 
