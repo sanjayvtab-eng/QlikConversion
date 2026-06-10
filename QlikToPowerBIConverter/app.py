@@ -2,6 +2,7 @@ import json
 import os
 
 import streamlit as st
+from browser_file_uploader import browser_file_uploader, uploaded_payload_to_bytes
 from streamlit_upload_post_patch import allow_upload_post
 
 from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
@@ -28,20 +29,20 @@ st.set_page_config(page_title="QlikToPowerBIConverter", page_icon="🔁", layout
 st.title("QlikToPowerBIConverter")
 st.caption("Upload a Qlik script (.qvs) to analyze ETL logic and generate Power Query M code.")
 
-uploaded_file = st.file_uploader("Upload Qlik script", type=["qvs", "txt"], accept_multiple_files=False)
+uploaded_file = browser_file_uploader("Upload Qlik script", key="qlik_script")
 
 if uploaded_file is not None:
-    raw_text = uploaded_file.getvalue().decode("utf-8", errors="ignore")
-    st.success(f"Uploaded: {uploaded_file.name}")
+    uploaded_name, file_bytes, raw_text = uploaded_payload_to_bytes(uploaded_file)
+    st.success(f"Uploaded: {uploaded_name}")
 
     st.subheader("Uploaded script")
     st.code(raw_text, language="text")
     # Save uploaded file to uploads folder and log for debugging on Render
     try:
         base_dir = os.path.abspath(os.path.dirname(__file__))
-        upload_path = os.path.join(base_dir, "uploads", uploaded_file.name)
+        upload_path = os.path.join(base_dir, "uploads", uploaded_name)
         with open(upload_path, "wb") as f:
-            f.write(uploaded_file.getvalue())
+            f.write(file_bytes)
         print(f"[UPLOAD] Saved file to: {upload_path} ({os.path.getsize(upload_path)} bytes)")
     except Exception as ex:
         print(f"[UPLOAD] Error saving uploaded file: {ex}")

@@ -17,6 +17,7 @@ except Exception:
 import json
 import base64
 import streamlit as st
+from browser_file_uploader import browser_file_uploader, uploaded_payload_to_bytes
 from streamlit_upload_post_patch import allow_upload_post
 
 allow_upload_post()
@@ -41,29 +42,23 @@ if not _imports_ok:
     st.error(f"Import error: {_import_err_msg}")
     st.stop()
 
-uploaded_file = st.file_uploader(
-    "Upload Qlik script",
-    type=["qvs", "txt"],
-    accept_multiple_files=False
-)
+uploaded_file = browser_file_uploader("Upload Qlik script", key="qlik_script")
 
 if uploaded_file is not None:
-    # Read bytes immediately from in-memory buffer before any PUT occurs
     try:
-        file_bytes = uploaded_file.getvalue()
-        raw_text = file_bytes.decode("utf-8", errors="ignore")
+        uploaded_name, file_bytes, raw_text = uploaded_payload_to_bytes(uploaded_file)
     except Exception as e:
         st.error(f"Could not read file: {e}")
         st.stop()
 
-    st.success(f"✅ Uploaded: {uploaded_file.name} ({len(file_bytes)/1024:.1f} KB)")
+    st.success(f"Uploaded: {uploaded_name} ({len(file_bytes)/1024:.1f} KB)")
     st.subheader("Uploaded script")
     st.code(raw_text, language="text")
 
     try:
         for path in [
-            os.path.join(base_dir, "uploads", uploaded_file.name),
-            os.path.join(base_dir, "QlikToPowerBIConverter", "uploads", uploaded_file.name),
+            os.path.join(base_dir, "uploads", uploaded_name),
+            os.path.join(base_dir, "QlikToPowerBIConverter", "uploads", uploaded_name),
         ]:
             with open(path, "wb") as f:
                 f.write(file_bytes)

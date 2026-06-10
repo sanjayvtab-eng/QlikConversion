@@ -7,6 +7,7 @@ setup(
     packages=find_packages(),
     py_modules=[
         "app",
+        "browser_file_uploader",
         "patch_streamlit_upload",
         "sitecustomize",
         "streamlit_upload_post_patch",
