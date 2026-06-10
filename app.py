@@ -28,22 +28,17 @@ except Exception:
 import json
 import streamlit as st
 
+# Force-disable XSRF protection programmatically so it takes effect before
+# Streamlit builds its upload routes (CLI flags arrive too late on Render).
+try:
+    from streamlit import config as _st_config
+    _st_config.set_option("server.enableXsrfProtection", False)
+    _st_config.set_option("server.enableCORS", False)
+except Exception:
+    pass
+
 from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
 from QlikToPowerBIConverter.generators.m_generator import MGenerator
-
-def disable_streamlit_upload_xsrf_check() -> None:
-    """Avoid Render-hosted upload 403s from Streamlit's internal upload route."""
-    try:
-        from streamlit.web.server import server_util
-        from streamlit.web.server.starlette import starlette_routes
-
-        server_util.is_xsrf_enabled = lambda: False
-        starlette_routes.is_xsrf_enabled = lambda: False
-    except Exception:
-        pass
-
-
-disable_streamlit_upload_xsrf_check()
 
 # Ensure uploads directories exist (repo root and package) so deployed
 # instances (Render) have the folders available for saving files.
