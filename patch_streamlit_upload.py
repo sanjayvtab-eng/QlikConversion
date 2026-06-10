@@ -9,7 +9,7 @@ OLD = 'method:"PUT",data:we,responseType:"text"'
 NEW = 'method:"POST",data:we,responseType:"text"'
 
 
-def main() -> None:
+def patch_streamlit_frontend_upload_method() -> list[Path]:
     static_dir = Path(streamlit.__file__).parent / "static" / "static" / "js"
     patched_files = []
 
@@ -33,6 +33,11 @@ def main() -> None:
             f"No Streamlit frontend bundle with {OLD!r} was found under {static_dir}."
         )
 
+    return patched_files
+
+
+def main() -> None:
+    patched_files = patch_streamlit_frontend_upload_method()
     for js_file in patched_files:
         print(f"Patched Streamlit uploader method in {js_file}")
 

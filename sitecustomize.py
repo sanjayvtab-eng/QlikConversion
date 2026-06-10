@@ -20,6 +20,13 @@ try:
 except Exception:
     pass
 
+try:
+    from patch_streamlit_upload import patch_streamlit_frontend_upload_method
+
+    patch_streamlit_frontend_upload_method()
+except Exception:
+    pass
+
 # Also set via config as a belt-and-suspenders approach
 try:
     from streamlit import config as _st_config
