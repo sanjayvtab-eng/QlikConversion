@@ -1,134 +1,39 @@
-from parser.qlik_parser import QlikParser
-from utils.knowledge_loader import KnowledgeLoader
+class MigrationAutomationAgent:
+    def __init__(self, qlik_excel, m_metadata):
+        self.extractor = EnhancedExtractionAgent(qlik_excel, m_metadata)
+        self.schema = self.extractor.load_m_query_metadata()
+        self.parser = ContextAwareSetAnalysisParser(self.schema)
+        self.validator = DAXValidationAgent(self.schema)
 
+    def execute_migration_pipeline(self, output_excel_path):
+        raw_data = self.extractor.extract_qlik_expressions()
+        conversion_results = []
+        validation_results = []
+        
+        for idx, row in raw_data.iterrows():
+            m_name = row['Measure Name']
+            qlik_raw = row['Qlik Expression']
+            
+            # Translate
+            converted_dax = self.parser.convert_to_dax(qlik_raw)
+            # Validate
+            val_log = self.validator.validate_measure(m_name, converted_dax)
+            
+            conversion_results.append({
+                "Measure Name": m_name,
+                "Qlik Expression": qlik_raw,
+                "Generated DAX": converted_dax,
+                "Status": val_log["status"]
+            })
+            
+            if val_log["errors"]:
+                validation_results.append({
+                    "Measure Name": m_name,
+                    "Errors": "; ".join(val_log["errors"])
+                })
 
-class MigrationAgent:
-    """
-    Build a rulebook-driven analysis model
-    from Qlik metadata.
-    """
-
-    def __init__(self, base_dir: str):
-
-        self.base_dir = base_dir
-
-        self.parser = QlikParser()
-
-        self.knowledge_loader = KnowledgeLoader(
-            base_dir
-        )
-
-    def analyze(
-        self,
-        script: str
-    ) -> dict:
-
-        rulebook = (
-            self.knowledge_loader.load_rules()
-        )
-
-        rule_mapping = (
-            self.knowledge_loader.get_rule_mapping()
-        )
-
-        metadata = (
-            self.parser.extract_metadata(script)
-        )
-
-        operations = [
-            item["type"]
-            for item in metadata["transformations"]
-        ]
-
-        transformations = []
-
-        warnings = list(
-            metadata.get(
-                "warnings",
-                []
-            )
-        )
-
-        for item in metadata["transformations"]:
-
-            operation = item["type"]
-
-            key = operation.lower()
-
-            rule = (
-                rule_mapping.get(key)
-                or rule_mapping.get(
-                    operation.lower()
-                )
-            )
-
-            if rule is None:
-
-                warnings.append(
-                    f"No authoritative rulebook mapping found for '{operation}'."
-                )
-
-                rule = {
-                    "concept": operation,
-                    "equivalent": "Manual review required",
-                    "notes": "Not found in rulebook",
-                    "type": "Unknown"
-                }
-
-            transformations.append(
-                {
-                    "operation": operation,
-                    "rule": rule,
-                    "detail": item
-                }
-            )
-
-        return {
-
-            "rulebook_summary":
-                rulebook.splitlines()[:10],
-
-            "operations":
-                list(
-                    dict.fromkeys(
-                        operations
-                    )
-                ),
-
-            "metadata":
-                metadata,
-
-            "source_files":
-                metadata.get(
-                    "sources",
-                    []
-                ),
-
-            "tables":
-                metadata.get(
-                    "tables",
-                    []
-                ),
-
-            "joins":
-                metadata.get(
-                    "joins",
-                    []
-                ),
-
-            "transformations":
-                transformations,
-
-            "warnings":
-                warnings,
-
-            "source_lines":
-                len(
-                    self.parser.extract_lines(
-                        script
-                    )
-                ),
-
-            "rule_mapping":
-                rule_mapping
-        }
+        # Save to a structured Multi-Tab Excel spreadsheet
+        with pd.ExcelWriter(output_excel_path) as writer:
+            pd.DataFrame(conversion_results).to_excel(writer, sheet_name="Conversion Report", index=False)
+            if validation_results:
+                pd.DataFrame(validation_results).to_excel(writer, sheet_name="Validation & Error Logs", index=False)

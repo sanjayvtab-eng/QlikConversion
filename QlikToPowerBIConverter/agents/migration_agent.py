@@ -1,215 +1,109 @@
-class MGenerator:
-    """Generate executable Power Query M code from parsed Qlik metadata."""
+from parser.qlik_parser import QlikParser
+from utils.knowledge_loader import KnowledgeLoader
 
-    def generate(self, analysis: dict) -> str:
 
-        metadata = analysis.get("metadata", {})
-        file_paths = analysis.get("file_paths", {})
+class MigrationAgent:
+    """
+    Build a rulebook-driven analysis model from Qlik metadata.
+    Now operates per-table so every table block produces its own
+    transformations, source references, and M-code output.
+    """
 
-        columns = metadata.get("columns", [])
-        filters = metadata.get("filters", [])
-        rename_fields = metadata.get("rename_fields", [])
-        drop_fields = metadata.get("drop_fields", [])
-        aggregations = metadata.get("aggregations", [])
+    def __init__(self, base_dir: str):
 
-        source_files = analysis.get("source_files", [])
+        self.base_dir = base_dir
+        self.parser   = QlikParser()
+        self.knowledge_loader = KnowledgeLoader(base_dir)
 
-        lines = ["let"]
+    # ------------------------------------------------------------------
 
-        # ============================================
-        # SOURCE FILES
-        # ============================================
+    def analyze(self, script: str) -> dict:
 
-        if source_files:
+        rulebook     = self.knowledge_loader.load_rules()
+        rule_mapping = self.knowledge_loader.get_rule_mapping()
 
-            source_step_names = []
+        # Full metadata — now contains ``table_blocks`` (one entry per table)
+        metadata = self.parser.extract_metadata(script)
 
-            for idx, source in enumerate(source_files, start=1):
+        warnings:      list = list(metadata.get("warnings", []))
+        all_operations: list = []
+        processed_blocks: list = []
 
-                original_path = source.get("path", "")
+        # ── Process each table block independently ─────────────────────
+        for block in metadata.get("table_blocks", []):
 
-                mapped_path = file_paths.get(
-                    original_path,
-                    original_path
+            block_transformations = []
+
+            for item in block.get("transformations", []):
+
+                operation = item["type"]
+
+                if operation not in all_operations:
+                    all_operations.append(operation)
+
+                key  = operation.lower()
+                rule = (
+                    rule_mapping.get(key)
+                    or rule_mapping.get(operation.lower())
                 )
 
-                mapped_path = mapped_path.replace("\\", "\\\\")
+                if rule is None:
+                    warnings.append(
+                        f"No rulebook mapping found for '{operation}' "
+                        f"in table '{block['table']['name']}'."
+                    )
+                    rule = {
+                        "concept":    operation,
+                        "equivalent": "Manual review required",
+                        "notes":      "Not found in rulebook",
+                        "type":       "Unknown",
+                    }
 
-                source_name = f"Source{idx}"
+                block_transformations.append(
+                    {
+                        "operation": operation,
+                        "rule":      rule,
+                        "detail":    item,
+                    }
+                )
 
-                source_step_names.append(source_name)
-
-                lines.extend([
-                    f'    {source_name} = Excel.Workbook(File.Contents("{mapped_path}"), null, true),',
-                    f'    {source_name}_Data = {source_name}{{0}}[Data],',
-                    f'    {source_name}_Headers = Table.PromoteHeaders({source_name}_Data, [PromoteAllScalars=true]),'
-                ])
-
-            current_step = f"{source_step_names[0]}_Headers"
-
-        else:
-
-            column_names = sorted(
+            processed_blocks.append(
                 {
-                    item["name"]
-                    for item in columns
-                    if item.get("name")
+                    # core identity
+                    "table":           block["table"],
+                    # per-table data used by MGenerator
+                    "columns":         block["columns"],
+                    "sources":         block["sources"],
+                    "filters":         block["filters"],
+                    "aggregations":    block["aggregations"],
+                    "joins":           block["joins"],
+                    "rename_fields":   block["rename_fields"],
+                    "drop_fields":     block["drop_fields"],
+                    "is_resident":     block.get("is_resident", False),
+                    # enriched transformations
+                    "transformations": block_transformations,
                 }
             )
 
-            if not column_names:
-                column_names = ["Column1"]
+        return {
+            # ── rulebook context ──────────────────────────────────────
+            "rulebook_summary": rulebook.splitlines()[:10],
+            "rule_mapping":     rule_mapping,
 
-            lines.append(
-                "    Source = #table(type table ["
-                + ", ".join(
-                    f"{name}=any"
-                    for name in column_names
-                )
-                + "], {}),"
-            )
+            # ── per-table blocks (primary output consumed by MGenerator)
+            "table_blocks":     processed_blocks,
 
-            current_step = "Source"
-
-        # ============================================
-        # FILTERS
-        # ============================================
-
-        if filters:
-
-            lines.append(
-                f"    FilteredRows = {current_step},"
-            )
-
-            current_step = "FilteredRows"
-
-        # ============================================
-        # SELECT COLUMNS
-        # ============================================
-
-        column_names = sorted(
-            {
-                item["name"]
-                for item in columns
-                if item.get("name")
-            }
-        )
-
-        if column_names:
-
-            cols = ", ".join(
-                f'"{c}"'
-                for c in column_names
-            )
-
-            lines.append(
-                f"    SelectedColumns = Table.SelectColumns({current_step}, {{{cols}}}),"
-            )
-
-            current_step = "SelectedColumns"
-
-        # ============================================
-        # RENAME COLUMNS
-        # ============================================
-
-        if rename_fields:
-
-            rename_map = rename_fields[0].get(
-                "mapping",
-                ""
-            )
-
-            if " as " in rename_map.lower():
-
-                parts = rename_map.split(" as ")
-
-                if len(parts) == 2:
-
-                    old = parts[0].strip()
-                    new = parts[1].strip()
-
-                    lines.append(
-                        f'    RenamedColumns = Table.RenameColumns({current_step}, {{{{"{old}", "{new}"}}}}),'
-                    )
-
-                    current_step = "RenamedColumns"
-
-        # ============================================
-        # DROP COLUMNS
-        # ============================================
-
-        if drop_fields:
-
-            fields = drop_fields[0].get(
-                "fields",
-                []
-            )
-
-            if fields:
-
-                field_text = ", ".join(
-                    f'"{field}"'
-                    for field in fields
-                )
-
-                lines.append(
-                    f"    DroppedColumns = Table.RemoveColumns({current_step}, {{{field_text}}}),"
-                )
-
-                current_step = "DroppedColumns"
-
-        # ============================================
-        # GROUP BY
-        # ============================================
-
-        if aggregations:
-
-            group_by = aggregations[0].get(
-                "group_by",
-                []
-            )
-
-            if group_by:
-
-                group_text = ", ".join(
-                    f'"{item}"'
-                    for item in group_by
-                )
-
-                lines.append(
-                    f"    GroupedRows = Table.Group({current_step}, {{{group_text}}}, {{}}),"
-                )
-
-                current_step = "GroupedRows"
-
-        # ============================================
-        # JOIN COMMENTS
-        # ============================================
-
-        joins = analysis.get("joins", [])
-
-        if joins:
-
-            lines.append(
-                "    // JOIN detected - implement using Table.NestedJoin"
-            )
-
-        operations = analysis.get(
-            "operations",
-            []
-        )
-
-        if "APPLYMAP" in operations:
-
-            lines.append(
-                "    // APPLYMAP detected - implement using Merge Queries"
-            )
-
-        # ============================================
-        # FINAL OUTPUT
-        # ============================================
-
-        lines.append("in")
-        lines.append(f"    {current_step}")
-
-        return "\n".join(lines)
+            # ── flat / global (backward-compat) ──────────────────────
+            "operations":       list(dict.fromkeys(all_operations)),
+            "metadata":         metadata,
+            "source_files":     metadata.get("sources", []),
+            "tables":           metadata.get("tables", []),
+            "joins":            metadata.get("joins", []),
+            "transformations":  [
+                t
+                for b in processed_blocks
+                for t in b["transformations"]
+            ],
+            "warnings":         warnings,
+            "source_lines":     len(self.parser.extract_lines(script)),
+        }

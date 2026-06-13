@@ -1,4 +1,3 @@
-
 # converters/dax_converter.py
 
 import json
@@ -19,101 +18,90 @@ class DaxConverter:
         )
 
         if os.path.exists(mapping_path):
-
-            with open(
-                mapping_path,
-                "r",
-                encoding="utf-8"
-            ) as f:
-
+            with open(mapping_path, "r", encoding="utf-8") as f:
                 self.table_mapping = json.load(f)
-
         else:
-
             self.table_mapping = {}
 
-    def get_table(
-        self,
-        field,
-        default_table
-    ):
+    def get_table(self, field, default_table):
+        return self.table_mapping.get(field, default_table)
 
-        return self.table_mapping.get(
-            field,
-            default_table
-        )
+    def _build_filter_clause(self, f, measure_table):
+        """Convert a single parsed filter dict into a DAX filter string."""
 
-    def convert(
-        self,
-        expression,
-        measure_table="FactSales"
-    ):
+        field     = f["field"]
+        value     = str(f["value"])
+        operator  = f["operator"]
+        table_name = self.get_table(field, measure_table)
 
-        parsed = self.parser.parse(
-            expression
-        )
+        # Multi-value  e.g.  North,South
+        if "," in value:
+            values = [v.strip() for v in value.split(",")]
+            in_list = ",".join(f'"{v}"' for v in values)
+            return f"{table_name}[{field}] IN {{{in_list}}}"
 
-        agg = parsed.get(
-            "aggregation"
-        )
+        # Comparison operators  > < >= <= <>
+        if operator in (">", "<", ">=", "<=", "<>"):
+            # Numeric value → no quotes
+            try:
+                float(value)
+                return f"{table_name}[{field}] {operator} {value}"
+            except ValueError:
+                return f'{table_name}[{field}] {operator} "{value}"'
 
-        measure = parsed.get(
-            "measure"
-        )
+        # Equals — plain string, no single quotes
+        return f'{table_name}[{field}] = "{value}"'
 
-        pattern = parsed.get(
-            "pattern"
-        )
+    def convert(self, expression, measure_table="FactSales"):
+
+        parsed  = self.parser.parse(expression)
+        agg     = parsed.get("aggregation")
+        measure = parsed.get("measure")
+        pattern = parsed.get("pattern")
 
         if not agg:
-
-            return (
-                f"-- Unable to detect aggregation: "
-                f"{expression}"
-            )
+            return f"-- Unable to detect aggregation: {expression}"
 
         if not measure:
-
-            return (
-                f"-- Unable to detect measure: "
-                f"{expression}"
-            )
+            return f"-- Unable to detect measure: {expression}"
 
         agg_map = {
-            "Sum": "SUM",
+            "Sum":   "SUM",
             "Count": "COUNT",
-            "Avg": "AVERAGE",
-            "Min": "MIN",
-            "Max": "MAX"
+            "Avg":   "AVERAGE",
+            "Min":   "MIN",
+            "Max":   "MAX",
         }
 
-        dax_agg = agg_map.get(
-            agg,
-            agg.upper()
-        )
+        dax_agg = agg_map.get(agg, agg.upper())
+
+        filters = parsed.get("filters", [])
 
         # -----------------------------------
-        # DISTINCTCOUNT
+        # DISTINCTCOUNT  (with or without filters)
         # -----------------------------------
 
         if parsed.get("distinct"):
+            if not filters:
+                return f"DISTINCTCOUNT({measure_table}[{measure}])"
 
-            return (
-                f"DISTINCTCOUNT("
-                f"{measure_table}[{measure}]"
-                f")"
+            dax = (
+                "CALCULATE(\n"
+                f"    DISTINCTCOUNT({measure_table}[{measure}])"
             )
+            for f in filters:
+                dax += ",\n    " + self._build_filter_clause(f, measure_table)
+            dax += "\n)"
+            return dax
 
         # -----------------------------------
         # TOTAL
         # -----------------------------------
 
         if pattern == "TOTAL":
-
             return (
                 "CALCULATE(\n"
-                f"    {dax_agg}"
-                f"({measure_table}[{measure}]),\n"
+                f"    {dax_agg}({measure_table}[{measure}]),\n"
                 f"    ALL({measure_table})\n"
                 ")"
             )
@@ -123,15 +111,10 @@ class DaxConverter:
         # -----------------------------------
 
         if pattern == "TOTAL_FIELD":
-
-            field = parsed.get(
-                "total_field"
-            )
-
+            field = parsed.get("total_field")
             return (
                 "CALCULATE(\n"
-                f"    {dax_agg}"
-                f"({measure_table}[{measure}]),\n"
+                f"    {dax_agg}({measure_table}[{measure}]),\n"
                 "    ALLEXCEPT(\n"
                 f"        {measure_table},\n"
                 f"        {measure_table}[{field}]\n"
@@ -144,11 +127,7 @@ class DaxConverter:
         # -----------------------------------
 
         if parsed.get("aggr"):
-
-            dim = parsed.get(
-                "aggr_dimension"
-            )
-
+            dim = parsed.get("aggr_dimension")
             return (
                 "AVERAGEX(\n"
                 f"    VALUES({measure_table}[{dim}]),\n"
@@ -163,11 +142,9 @@ class DaxConverter:
         # -----------------------------------
 
         if parsed.get("p_function"):
-
             return (
                 "CALCULATE(\n"
-                f"    {dax_agg}"
-                f"({measure_table}[{measure}]),\n"
+                f"    {dax_agg}({measure_table}[{measure}]),\n"
                 f"    VALUES({measure_table}[Customer])\n"
                 ")"
             )
@@ -177,7 +154,6 @@ class DaxConverter:
         # -----------------------------------
 
         if parsed.get("e_function"):
-
             return (
                 "VAR Excluded =\n"
                 "EXCEPT(\n"
@@ -186,8 +162,7 @@ class DaxConverter:
                 ")\n"
                 "RETURN\n"
                 "CALCULATE(\n"
-                f"    {dax_agg}"
-                f"({measure_table}[{measure}]),\n"
+                f"    {dax_agg}({measure_table}[{measure}]),\n"
                 "    Excluded\n"
                 ")"
             )
@@ -197,11 +172,9 @@ class DaxConverter:
         # -----------------------------------
 
         if parsed.get("ignore_selection"):
-
             return (
                 "CALCULATE(\n"
-                f"    {dax_agg}"
-                f"({measure_table}[{measure}]),\n"
+                f"    {dax_agg}({measure_table}[{measure}]),\n"
                 f"    ALL({measure_table})\n"
                 ")"
             )
@@ -210,86 +183,18 @@ class DaxConverter:
         # Standard CALCULATE
         # -----------------------------------
 
+        if not filters:
+            # No filters — simple aggregation, no CALCULATE wrapper needed
+            return f"{dax_agg}({measure_table}[{measure}])"
+
         dax = (
             "CALCULATE(\n"
-            f"    {dax_agg}"
-            f"({measure_table}[{measure}])"
+            f"    {dax_agg}({measure_table}[{measure}])"
         )
 
-        for f in parsed["filters"]:
-
-            field = f["field"]
-
-            value = str(
-                f["value"]
-            )
-
-            operator = f["operator"]
-
-            table_name = self.get_table(
-                field,
-                measure_table
-            )
-
-            # Multi Value
-
-            if "," in value:
-
-                values = [
-                    x.strip().replace("'", "")
-                    for x in value.split(",")
-                ]
-
-                dax += (
-                    ",\n    "
-                    f"{table_name}[{field}] IN "
-                    "{"
-                    + ",".join(
-                        f'"{v}"'
-                        for v in values
-                    )
-                    + "}"
-                )
-
-            # Operators
-
-            elif operator in (
-                ">",
-                "<",
-                ">=",
-                "<=",
-                "<>"
-            ):
-
-                if value.replace(".", "").isdigit():
-
-                    dax += (
-                        ",\n    "
-                        f"{table_name}[{field}] "
-                        f"{operator} "
-                        f"{value}"
-                    )
-
-                else:
-
-                    dax += (
-                        ",\n    "
-                        f"{table_name}[{field}] "
-                        f"{operator} "
-                        f'"{value}"'
-                    )
-
-            # Equals
-
-            else:
-
-                dax += (
-                    ",\n    "
-                    f"{table_name}[{field}] = "
-                    f'"{value}"'
-                )
+        for f in filters:
+            dax += ",\n    " + self._build_filter_clause(f, measure_table)
 
         dax += "\n)"
 
         return dax
-
