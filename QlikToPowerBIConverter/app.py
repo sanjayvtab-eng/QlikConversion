@@ -2,13 +2,12 @@ import json
 import os
 import re
 
-
 import streamlit as st
 from browser_file_uploader import browser_file_uploader, uploaded_payload_to_bytes
 from streamlit_upload_post_patch import allow_upload_post
 
-from QlikToPowerBIConverter.agents.migration_agent import MigrationAgent
-from QlikToPowerBIConverter.generators.m_generator import MGenerator
+from agents.migration_agent import MigrationAgent
+from generators.m_generator import MGenerator
 
 allow_upload_post()
 

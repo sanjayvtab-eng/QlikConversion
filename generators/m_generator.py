@@ -77,11 +77,6 @@ class MGenerator:
 
         if filters:
 
-            filter_expr = filters[0].get(
-                "expression",
-                ""
-            )
-
             lines.append(
                 f"    FilteredRows = {current_step},"
             )

@@ -3,19 +3,37 @@ from utils.knowledge_loader import KnowledgeLoader
 
 
 class MigrationAgent:
-    """Build a rulebook-driven analysis model from Qlik metadata."""
+    """
+    Build a rulebook-driven analysis model
+    from Qlik metadata.
+    """
 
     def __init__(self, base_dir: str):
+
         self.base_dir = base_dir
+
         self.parser = QlikParser()
-        self.knowledge_loader = KnowledgeLoader(base_dir)
 
-    def analyze(self, script: str) -> dict:
+        self.knowledge_loader = KnowledgeLoader(
+            base_dir
+        )
 
-        rulebook = self.knowledge_loader.load_rules()
-        rule_mapping = self.knowledge_loader.get_rule_mapping()
+    def analyze(
+        self,
+        script: str
+    ) -> dict:
 
-        metadata = self.parser.extract_metadata(script)
+        rulebook = (
+            self.knowledge_loader.load_rules()
+        )
+
+        rule_mapping = (
+            self.knowledge_loader.get_rule_mapping()
+        )
+
+        metadata = (
+            self.parser.extract_metadata(script)
+        )
 
         operations = [
             item["type"]
@@ -23,8 +41,12 @@ class MigrationAgent:
         ]
 
         transformations = []
+
         warnings = list(
-            metadata.get("warnings", [])
+            metadata.get(
+                "warnings",
+                []
+            )
         )
 
         for item in metadata["transformations"]:
@@ -36,7 +58,7 @@ class MigrationAgent:
             rule = (
                 rule_mapping.get(key)
                 or rule_mapping.get(
-                    operation.lower().replace(" ", " ")
+                    operation.lower()
                 )
             )
 
@@ -62,19 +84,51 @@ class MigrationAgent:
             )
 
         return {
-            "rulebook_summary": rulebook.splitlines()[:10],
-            "operations": list(dict.fromkeys(operations)),
-            "metadata": metadata,
 
-            # NEW
-            "source_files": metadata.get("sources", []),
-            "tables": metadata.get("tables", []),
-            "joins": metadata.get("joins", []),
+            "rulebook_summary":
+                rulebook.splitlines()[:10],
 
-            "transformations": transformations,
-            "warnings": warnings,
-            "source_lines": len(
-                self.parser.extract_lines(script)
-            ),
-            "rule_mapping": rule_mapping,
+            "operations":
+                list(
+                    dict.fromkeys(
+                        operations
+                    )
+                ),
+
+            "metadata":
+                metadata,
+
+            "source_files":
+                metadata.get(
+                    "sources",
+                    []
+                ),
+
+            "tables":
+                metadata.get(
+                    "tables",
+                    []
+                ),
+
+            "joins":
+                metadata.get(
+                    "joins",
+                    []
+                ),
+
+            "transformations":
+                transformations,
+
+            "warnings":
+                warnings,
+
+            "source_lines":
+                len(
+                    self.parser.extract_lines(
+                        script
+                    )
+                ),
+
+            "rule_mapping":
+                rule_mapping
         }
