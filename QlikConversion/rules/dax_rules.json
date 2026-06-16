@@ -1,0 +1,120 @@
+
+{
+  "aggregations": {
+    "Sum": "SUM",
+    "Count": "COUNT",
+    "Avg": "AVERAGE",
+    "Min": "MIN",
+    "Max": "MAX",
+    "DistinctCount": "DISTINCTCOUNT"
+  },
+
+  "special_patterns": {
+
+    "CURRENT_SELECTION": {
+      "qlik": "{$}",
+      "dax": "{AGG}(Sales[{MEASURE}])"
+    },
+
+    "IGNORE_SELECTION": {
+      "qlik": "{1}",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), ALL(Sales))"
+    },
+
+    "DISTINCT_COUNT": {
+      "qlik": "Count(DISTINCT {MEASURE})",
+      "dax": "DISTINCTCOUNT(Sales[{MEASURE}])"
+    },
+
+    "EXCLUDE_VALUE": {
+      "qlik": "<{FIELD}-={'{VALUE}'}>",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), Sales[{FIELD}] <> \"{VALUE}\")"
+    },
+
+    "MULTI_VALUE": {
+      "qlik": "<{FIELD}={'{VALUE1}','{VALUE2}'}>",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), Sales[{FIELD}] IN {\"{VALUE1}\",\"{VALUE2}\"})"
+    },
+
+    "GREATER_THAN": {
+      "qlik": "<{FIELD}={\">{VALUE}\"}>",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), Sales[{FIELD}] > {VALUE})"
+    },
+
+    "LESS_THAN": {
+      "qlik": "<{FIELD}={\"<{VALUE}\"}>",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), Sales[{FIELD}] < {VALUE})"
+    },
+
+    "GREATER_EQUAL": {
+      "qlik": "<{FIELD}={\">={VALUE}\"}>",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), Sales[{FIELD}] >= {VALUE})"
+    },
+
+    "LESS_EQUAL": {
+      "qlik": "<{FIELD}={\"<={VALUE}\"}>",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), Sales[{FIELD}] <= {VALUE})"
+    },
+
+    "P_FUNCTION": {
+      "qlik": "P({FIELD})",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), VALUES(Sales[{FIELD}]))"
+    },
+
+    "E_FUNCTION": {
+      "qlik": "E({FIELD})",
+      "dax": "VAR Excluded = EXCEPT(ALL(Sales[{FIELD}]), VALUES(Sales[{FIELD}])) RETURN CALCULATE({AGG}(Sales[{MEASURE}]), Excluded)"
+    },
+
+    "TOTAL": {
+      "qlik": "TOTAL",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), ALL(Sales))"
+    },
+
+    "TOTAL_FIELD": {
+      "qlik": "TOTAL <{FIELD}>",
+      "dax": "CALCULATE({AGG}(Sales[{MEASURE}]), ALLEXCEPT(Sales, Sales[{FIELD}]))"
+    },
+
+    "AGGR_SUM": {
+      "qlik": "Sum(Aggr(Sum({MEASURE}), {FIELD}))",
+      "dax": "SUMX(VALUES(Sales[{FIELD}]), CALCULATE(SUM(Sales[{MEASURE}])))"
+    },
+
+    "AGGR_AVG": {
+      "qlik": "Avg(Aggr(Sum({MEASURE}), {FIELD}))",
+      "dax": "AVERAGEX(VALUES(Sales[{FIELD}]), CALCULATE(SUM(Sales[{MEASURE}])))"
+    },
+
+    "YTD": {
+      "qlik": "YearStart(Today())",
+      "dax": "TOTALYTD(SUM(Sales[{MEASURE}]), Calendar[Date])"
+    },
+
+    "MTD": {
+      "qlik": "MonthStart(Today())",
+      "dax": "TOTALMTD(SUM(Sales[{MEASURE}]), Calendar[Date])"
+    },
+
+    "QTD": {
+      "qlik": "QuarterStart(Today())",
+      "dax": "TOTALQTD(SUM(Sales[{MEASURE}]), Calendar[Date])"
+    },
+
+    "LAST_12_MONTHS": {
+      "qlik": "AddMonths(Today(),-12)",
+      "dax": "CALCULATE(SUM(Sales[{MEASURE}]), DATESINPERIOD(Calendar[Date], MAX(Calendar[Date]), -12, MONTH))"
+    },
+
+    "PREVIOUS_YEAR": {
+      "qlik": "Max(Year)-1",
+      "dax": "VAR PrevYear = MAX(Sales[Year]) - 1 RETURN CALCULATE(SUM(Sales[{MEASURE}]), Sales[Year] = PrevYear)"
+    },
+
+    "CURRENT_YEAR": {
+      "qlik": "Max(Year)",
+      "dax": "VAR CurrYear = MAX(Sales[Year]) RETURN CALCULATE(SUM(Sales[{MEASURE}]), Sales[Year] = CurrYear)"
+    }
+  }
+}
+

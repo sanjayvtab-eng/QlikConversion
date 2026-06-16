@@ -1,0 +1,7 @@
+streamlit==1.46.1
+-e .
+pandas
+openpyxl
+fastapi
+uvicorn
+python-multipart

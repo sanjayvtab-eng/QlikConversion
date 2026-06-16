@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Qlik to Power BI Converter | VTAB SQUARE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo-area">
+            <img src="/static/logo.jpeg" alt="VTAB SQUARE" class="logo-image">
+            <div class="logo-text">VTAB<br>SQUARE</div>
+        </div>
+        <div class="nav-links">
+        </div>
+        <div class="nav-actions">
+            <div class="date-selector">
+                19 Jun 2024 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </div>
+            <button class="btn btn-primary btn-deploy">Deploy &uarr;</button>
+            <button class="btn btn-icon">...</button>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="top-section-layout">
+            <div class="top-left">
+                <div class="header-section">
+                    <h2 class="welcome-text">Welcome to the world of Data Analytics!!!</h2>
+                    <div class="badge">
+                        <span class="dot"></span> AI MIGRATION ENGINE ACTIVE
+                    </div>
+                    <h1 class="hero-title">
+                        <span class="text-dark">Qlik</span> 
+                        <span class="arrow">&rarr;</span> 
+                        <span class="text-gradient">Power BI</span>
+                    </h1>
+                    <p class="hero-subtitle">
+                        Context-aware conversion of Set Analysis, Load Scripts & DAX measures. Enterprise-grade. Zero manual rewrite.
+                    </p>
+                </div>
+
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-icon icon-blue">◎</div>
+                        <div class="stat-info">
+                            <h2>98%</h2>
+                            <p>Conversion<br>accuracy</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon icon-purple">⚡</div>
+                        <div class="stat-info">
+                            <h2>10x</h2>
+                            <p>Faster than<br>manual</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon icon-indigo">📚</div>
+                        <div class="stat-info">
+                            <h2>3</h2>
+                            <p>Source<br>systems</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="toggle-group">
+                    <button class="btn-toggle active" id="btn-power-query"><span class="dot"></span> Power Query M Generator</button>
+                    <button class="btn-toggle" id="btn-dax"><span class="dot-inactive"></span> DAX Generator</button>
+                </div>
+            </div>
+
+            <div class="top-right">
+                <div class="steps-grid stages-vertical">
+                    <div class="step-card animated-step">
+                        <p class="step-number">01 — CONVERT</p>
+                        <h3>Script to Power Query M</h3>
+                        <p>Full Qlik load script analysis with M-code output, field renaming, and join logic.</p>
+                        <a href="#" class="step-link">&rarr;</a>
+                    </div>
+                    <div class="step-card animated-step" style="animation-delay: 0.1s;">
+                        <p class="step-number">02 — GENERATE</p>
+                        <h3>Set Analysis to DAX</h3>
+                        <p>Contextual DAX measure generation from Qlik Set Analysis expressions.</p>
+                        <a href="#" class="step-link">&rarr;</a>
+                    </div>
+                    <div class="step-card animated-step" style="animation-delay: 0.2s;">
+                        <p class="step-number">03 — DEPLOY</p>
+                        <h3>Export & Integrate</h3>
+                        <p>Download M queries, DAX measures, and schema docs ready for Power BI Desktop.</p>
+                        <a href="#" class="step-link">&rarr;</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="upload-container" id="pqUploadContainer">
+            <div class="upload-header">
+                <p class="label">SOURCE SCRIPT</p>
+                <h2>Upload your Qlik load script</h2>
+                <p class="desc">The AI engine parses your QVS file and generates equivalent Power Query M transformations with schema-aware field mapping.</p>
+            </div>
+            
+            <div class="drop-zone" id="dropZone">
+                <div class="upload-icon">📄</div>
+                <h3>Drag and drop your file here</h3>
+                <p>Accepts <span class="tag">.qvs</span>, <span class="tag">.txt</span> • Max 20 MB per file</p>
+                <input type="file" id="fileInput" hidden accept=".qvs,.txt">
+                <button class="btn btn-outline" id="browseBtn">Browse files</button>
+            </div>
+        </div>
+
+        <!-- DAX Generator Inputs Container -->
+        <div class="upload-container hidden" id="daxUploadContainer">
+            <div class="upload-header">
+                <p class="label">DAX GENERATOR</p>
+                <h2>Inputs for Context-Aware DAX Generation</h2>
+                <p class="desc">Upload your Set Analysis mapping sheet (.xlsx or .csv) and optional M Query Schema Metadata context (.json) to build equivalent DAX measures.</p>
+            </div>
+            
+            <div style="display: flex; gap: 2rem; margin-bottom: 2rem;">
+                <div class="drop-zone" id="dropZoneDaxExcel" style="flex: 1; padding: 2rem 1rem;">
+                    <div class="upload-icon">📊</div>
+                    <h3>Set Analysis Excel/CSV</h3>
+                    <p>Drag & drop or <span class="tag">.xlsx</span>, <span class="tag">.csv</span></p>
+                    <input type="file" id="daxExcelInput" hidden accept=".xlsx,.csv">
+                    <button class="btn btn-outline" id="browseDaxExcelBtn">Browse files</button>
+                </div>
+                
+                <div class="drop-zone" id="dropZoneDaxMetadata" style="flex: 1; padding: 2rem 1rem;">
+                    <div class="upload-icon">🛡️</div>
+                    <h3>Schema Metadata (Optional)</h3>
+                    <p>Drag & drop or <span class="tag">.json</span></p>
+                    <input type="file" id="daxMetadataInput" hidden accept=".json">
+                    <button class="btn btn-outline" id="browseDaxMetadataBtn">Browse files</button>
+                </div>
+            </div>
+
+            <div id="daxPreviewSection" class="hidden" style="margin-top: 1rem;">
+                <h3 class="section-title">Set Analysis File Preview</h3>
+                <div id="daxPreviewTableContainer" style="overflow-x: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; margin-top: 0.5rem; max-height: 300px;">
+                    <!-- Data preview table -->
+                </div>
+                <button class="btn btn-primary" id="btnGenerateDax" style="margin-top: 1.5rem;">Generate Context-Aware DAX</button>
+            </div>
+        </div>
+
+        <div class="mapping-container hidden" id="mappingContainer">
+            <h2 class="section-title">Qlik Source</h2>
+            <div class="source-box">
+                <pre><code id="sourceCode"></code></pre>
+            </div>
+            
+            <h2 class="section-title" style="margin-top: 2rem;">Source File Mapping</h2>
+            <div class="mapping-box" id="mappingBox">
+                <!-- Dynamically populated fields -->
+            </div>
+            
+            <button class="btn btn-primary" id="btnGenerate" style="margin-top: 1rem;">Generate Power Query M</button>
+        </div>
+
+        <div class="result-container hidden" id="resultContainer">
+            <div class="result-section">
+                <h3>1. Detected Tables</h3>
+                <div id="detectedTables" class="data-box"></div>
+            </div>
+            <div class="result-section">
+                <h3>2. Detected ETL Operations</h3>
+                <div id="detectedOps" class="data-box"></div>
+            </div>
+            <div class="result-section">
+                <h3>3. Source File Mapping</h3>
+                <div id="sourceFileMappingResult" class="data-box"></div>
+            </div>
+            <div class="result-section">
+                <h3>4. Parsed Metadata</h3>
+                <pre class="data-box"><code id="parsedMetadata"></code></pre>
+            </div>
+            
+            <div class="result-header" style="margin-top: 2rem;">
+                <h2>5. Generated Power Query M Code</h2>
+            </div>
+            
+            <div class="tabs-container" id="tableTabs" style="display: flex; gap: 0.5rem; margin-bottom: -1px; overflow-x: auto; background: #1e293b; padding: 0.5rem; border-radius: 8px 8px 0 0; border: 1px solid #334155; border-bottom: none;">
+                <!-- Tabs dynamically populated -->
+            </div>
+            <pre class="data-box" style="margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; background: #f8fafc; color: #0f172a; border-color: #334155;"><code id="generatedCode" style="font-family: Consolas, monospace; font-size: 0.85rem;"></code></pre>
+            
+            <div style="margin-top: 1rem;">
+                <button class="btn btn-outline btn-sm" id="btnDownloadSingle" style="background: white; border: 1px solid #cbd5e1; color: #3b82f6;">⬇ Download Table.pq</button>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                <button class="btn btn-outline btn-sm" id="btnDownloadAll" style="background: white; border: 1px solid #cbd5e1; color: #3b82f6;">⬇ Download All Tables (combined .pq)</button>
+                <button class="btn btn-outline btn-sm" id="btnDownloadJson" style="background: white; border: 1px solid #cbd5e1; color: #ef4444;">⬇ Download Schema Metadata Context (.json)</button>
+            </div>
+
+            <div class="result-section">
+                <h3>6. Warnings and Unsupported Features</h3>
+                <div id="warningsBox" class="data-box" style="background: #064e3b; color: #10b981; border-color: #064e3b;">
+                    No unsupported features were flagged.
+                </div>
+            </div>
+            
+            <div class="result-section">
+                <h3>7. Migration Logs</h3>
+                <pre class="data-box" style="background: white; color: #475569; border: 1px solid #e2e8f0; font-size: 0.8rem; font-family: monospace;" id="migrationLogs"></pre>
+            </div>
+        </div>
+
+        <!-- DAX Generator Results Container -->
+        <div class="result-container hidden" id="daxResultContainer" style="margin-top: 3rem;">
+            <div class="result-section">
+                <h3 style="margin-bottom: 1rem;">📈 Migration Execution Metrics</h3>
+                <!-- KPI Blocks -->
+                <div style="display: flex; gap: 1.5rem; margin-top: 1rem; margin-bottom: 2rem;">
+                    <div style="flex: 1; background: rgba(255, 255, 255, 0.45); padding: 22px; border-radius: 14px; border: 1px solid rgba(59, 130, 246, 0.35); backdrop-filter: blur(12px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.02);">
+                        <p style="margin:0; font-size:12px; color:#64748B; font-weight:700; letter-spacing:0.5px;">ROWS PROCESSED</p>
+                        <p style="margin:8px 0 0 0; font-size:32px; color:#1E3A8A; font-weight:800;" id="kpiDaxProcessed">0</p>
+                    </div>
+                    <div style="flex: 1; background: rgba(255, 255, 255, 0.45); padding: 22px; border-radius: 14px; border: 1px solid rgba(16, 185, 129, 0.35); backdrop-filter: blur(12px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.02);">
+                        <p style="margin:0; font-size:12px; color:#64748B; font-weight:700; letter-spacing:0.5px;">PASSED VALIDATIONS</p>
+                        <p style="margin:8px 0 0 0; font-size:32px; color:#10B981; font-weight:800;" id="kpiDaxPassed">0</p>
+                    </div>
+                    <div style="flex: 1; background: rgba(255, 255, 255, 0.45); padding: 22px; border-radius: 14px; border: 1px solid rgba(239, 68, 68, 0.35); backdrop-filter: blur(12px); box-shadow: 0 10px 25px -5px rgba(0,0,0,0.02);">
+                        <p style="margin:0; font-size:12px; color:#64748B; font-weight:700; letter-spacing:0.5px;">FLAGGED ALERTS</p>
+                        <p style="margin:8px 0 0 0; font-size:32px; color:#EF4444; font-weight:800;" id="kpiDaxAlerts">0</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="result-section">
+                <h3>📋 DAX Conversion Report</h3>
+                <div id="daxReportTableContainer" style="overflow-x: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; margin-top: 0.5rem; margin-bottom: 2rem;">
+                    <!-- Results Table -->
+                </div>
+            </div>
+
+            <div class="result-section hidden" id="daxValidationErrorsSection">
+                <h3>🛑 Structural Validation & Error Logs</h3>
+                <div id="daxValidationErrors" class="data-box" style="background: white; color: #1e293b; border-color: var(--border-color); margin-bottom: 2rem;"></div>
+            </div>
+
+            <div style="margin-top: 2rem; margin-bottom: 2rem;">
+                <button class="btn btn-outline btn-sm" id="btnDownloadDaxPackage" style="background: white; border: 1px solid #cbd5e1; color: #3b82f6;">📥 Download Enterprise DAX Summary (.xlsx)</button>
+            </div>
+            
+            <div class="result-section">
+                <h3>7. Migration Logs</h3>
+                <pre class="data-box" style="background: white; color: #475569; border: 1px solid #e2e8f0; font-size: 0.8rem; font-family: monospace;" id="daxMigrationLogs"></pre>
+            </div>
+        </div>
+    </main>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
