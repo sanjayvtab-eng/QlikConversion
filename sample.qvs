@@ -1,0 +1,54 @@
+// Sample Qlik Script for Testing QlikToPowerBIConverter
+
+// Load from database
+Customers:
+LOAD
+    CustomerID,
+    CustomerName,
+    City,
+    Country
+FROM [lib://DataWarehouse/Customers.qvd];
+
+// Load from CSV with transformation
+Sales:
+LOAD
+    OrderID,
+    CustomerID,
+    OrderDate,
+    Amount,
+    Quantity
+FROM [lib://DataWarehouse/Sales.csv]
+WHERE Amount > 100;
+
+// Resident Load - Reference previous table
+SalesWithCustomer:
+LOAD
+    Sales.OrderID,
+    Sales.Amount,
+    Customers.CustomerName,
+    Sales.Quantity * Sales.Amount as TotalValue
+RESIDENT Sales
+LEFT JOIN (Sales)
+LOAD
+    CustomerID,
+    CustomerName
+RESIDENT Customers;
+
+// Group By aggregation
+MonthlySales:
+LOAD
+    DATE(OrderDate, 'YYYY-MM') as Month,
+    SUM(Amount) as TotalSales,
+    COUNT(OrderID) as OrderCount,
+    AVG(Quantity) as AvgQuantity
+RESIDENT SalesWithCustomer
+GROUP BY DATE(OrderDate, 'YYYY-MM');
+
+// Store result
+STORE MonthlySales INTO [lib://Output/MonthlySalesReport.qvd];
+
+// Drop unwanted fields
+DROP FIELD City, Country FROM Customers;
+
+// Rename field
+RENAME FIELD TotalValue to GrossValue;
