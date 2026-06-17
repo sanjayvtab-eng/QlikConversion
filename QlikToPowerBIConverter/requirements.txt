@@ -1,1 +1,6 @@
 streamlit==1.46.1
+fastapi
+uvicorn[standard]
+-e .
+pandas
+openpyxl
