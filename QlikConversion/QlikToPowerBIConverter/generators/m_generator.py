@@ -84,10 +84,11 @@ class MGenerator:
             lines, sources, columns, file_paths, is_resident, table_name
         )
 
-        # ── TYPE CHANGED COLUMNS ───────────────────────────────────────
-        current_step = self._emit_type_changes(
-            lines, columns, current_step, table_name
-        )
+        # ── TYPE CHANGED COLUMNS (Only if NO aggregations exist) ──────
+        if not aggregations:
+            current_step = self._emit_type_changes(
+                lines, columns, current_step, table_name
+            )
 
         # ── FILTER / WHERE ────────────────────────────────────────────
         if filters:
@@ -96,9 +97,6 @@ class MGenerator:
             )
 
         # ── SELECT COLUMNS ────────────────────────────────────────────
-        # Skip when this block has aggregations: the requested column
-        # list (group_by keys + aggregation aliases) only exists AFTER
-        # Table.Group runs, not on the raw resident/source table.
         column_names = self._unique_column_names(columns)
         if column_names and not aggregations:
             current_step = self._emit_select_columns(
@@ -121,6 +119,12 @@ class MGenerator:
         if aggregations:
             current_step = self._emit_group_by(
                 lines, aggregations, current_step
+            )
+
+        # ── TYPE CHANGED COLUMNS (Moved here when aggregations exist) ──
+        if aggregations:
+            current_step = self._emit_type_changes(
+                lines, columns, current_step, table_name
             )
 
         # ── ADVISORY COMMENTS ─────────────────────────────────────────
