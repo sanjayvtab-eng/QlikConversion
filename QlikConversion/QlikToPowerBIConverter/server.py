@@ -53,6 +53,8 @@ async def upload_file(file: UploadFile = File(...)):
 class GenerateRequest(BaseModel):
     raw_text: str
     file_mappings: dict
+    platform_type: str = "Excel Workbook (.xlsx)"  # <-- NEW: Captured from UI Dropdown
+    connection_details: str = ""                   # <-- NEW: Captured from UI Input Box
 
 @app.post("/api/generate")
 async def generate_m(req: GenerateRequest):
@@ -62,54 +64,28 @@ async def generate_m(req: GenerateRequest):
 
         analysis = agent.analyze(req.raw_text)
         analysis["file_paths"] = req.file_mappings
-        metadata = analysis.get("metadata", {})
         
+        # --- NEW: Inject UI Source Platform Details into Context ---
+        analysis["platform_type"] = req.platform_type
+        analysis["connection_details"] = req.connection_details
+        
+        metadata = analysis.get("metadata", {})
         generated_m = generator.generate(analysis)
         per_table = generator.generate_per_table(analysis)
 
-        # ─── EXTRACTION LOGIC FOR CLEAN SCHEMA METADATA ──────────────────
-        # Parses table_blocks directly to map your exact dictionary layout
+        # (Keep your extraction logic for clean schema metadata exactly as it is below...)
         formatted_schema = {}
         table_blocks = analysis.get("table_blocks", [])
-
         if isinstance(table_blocks, list) and len(table_blocks) > 0:
             for block in table_blocks:
-                if not isinstance(block, dict):
-                    continue
-                
-                # Extract clean table name string
+                if not isinstance(block, dict): continue
                 table_info = block.get("table", {})
-                if isinstance(table_info, dict):
-                    t_name = table_info.get("name")
-                else:
-                    t_name = str(table_info)
-                
-                if not t_name:
-                    t_name = block.get("table_name", "UnknownTable")
-
-                # Extract only column string names from the inner object lists
+                t_name = table_info.get("name") if isinstance(table_info, dict) else str(table_info)
+                if not t_name: t_name = block.get("table_name", "UnknownTable")
                 raw_cols = block.get("columns", [])
-                clean_cols = []
-                if isinstance(raw_cols, list):
-                    for col in raw_cols:
-                        if isinstance(col, dict):
-                            c_name = col.get("name")
-                        else:
-                            c_name = str(col)
-                        if c_name:
-                            clean_cols.append(c_name.strip())
-
+                clean_cols = [c.get("name").strip() if isinstance(c, dict) else str(c).strip() for c in raw_cols if c]
                 formatted_schema[t_name] = {"columns": clean_cols}
-        else:
-            # Fallback mapper matching your flat arrays
-            fallback_tables = metadata.get("tables", []) if isinstance(metadata, dict) else []
-            for tbl in fallback_tables:
-                if isinstance(tbl, dict):
-                    t_name = tbl.get("name", "UnknownTable")
-                else:
-                    t_name = str(tbl)
-                formatted_schema[t_name] = {"columns": []}
-
+        
         return JSONResponse(content={
             "success": True,
             "generated_m": generated_m,
@@ -118,11 +94,10 @@ async def generate_m(req: GenerateRequest):
             "table_blocks": table_blocks,
             "operations": analysis.get("operations", []),
             "warnings": analysis.get("warnings", []),
-            "metadata": formatted_schema  # Returns your custom target format cleanly
+            "metadata": formatted_schema
         })
     except Exception as e:
         return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
-
 @app.post("/api/dax/preview")
 async def preview_dax(file: UploadFile = File(...)):
     try:

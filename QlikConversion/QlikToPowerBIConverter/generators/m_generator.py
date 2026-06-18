@@ -1,3 +1,6 @@
+import re
+import json
+
 class MGenerator:
     """
     Generate executable Power Query M code from parsed Qlik metadata.
@@ -137,17 +140,21 @@ class MGenerator:
                 "    // APPLYMAP detected — implement using Merge Queries"
             )
 
-        # ── FINAL OUTPUT ──────────────────────────────────────────────
-        if lines[-1].endswith(","):
-           lines[-1] = lines[-1].rstrip(",")
+        # ── SANITIZE TRAILING COMMAS ──────────────────────────────────
+        for idx in range(len(lines) - 1, -1, -1):
+            stripped = lines[idx].rstrip()
+            if stripped.endswith(",") and not stripped.startswith("//"):
+                lines[idx] = stripped[:-1]
+                break
 
-           lines.append("in")
-           lines.append(f"    {current_step}")
+        # ── FINAL OUTPUT ──────────────────────────────────────────────
+        lines.append("in")
+        lines.append(f"    {current_step}")
 
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
-    # STEP EMITTERS  (each returns the new current_step name)
+    # STEP EMITTERS
     # ------------------------------------------------------------------
 
     def _emit_source(
@@ -159,7 +166,32 @@ class MGenerator:
         is_resident: bool,
         table_name: str,
     ) -> str:
-        """Emit the Source step and return the step name."""
+        """Emit the Source step dynamically based on selected Data Platform."""
+        
+        def parse_db_connection(connection_str: str) -> tuple:
+            server = "localhost"
+            database = "Master"
+            if not connection_str:
+                return server, database
+            
+            # Key-aware parser to completely eliminate "Server=" prefixes inside quotes
+            parts = connection_str.split(";")
+            for part in parts:
+                part_clean = part.strip()
+                if not part_clean:
+                    continue
+                if "=" in part_clean:
+                    k, v = part_clean.split("=", 1)
+                    k_low = k.strip().lower()
+                    v_val = v.strip()
+                    if k_low in ["server", "host", "datasource", "data source"]:
+                        server = v_val
+                    elif k_low in ["database", "db", "initialcatalog", "initial catalog"]:
+                        database = v_val
+                else:
+                    if part_clean == parts[0].strip():
+                        server = part_clean
+            return server, database
 
         # ── RESIDENT LOAD ─────────────────────────────────────────────
         file_sources = [s for s in sources if s.get("type") == "FILE"]
@@ -169,107 +201,181 @@ class MGenerator:
             ref_table = res_sources[0]["path"]
             safe_ref  = self._safe_step_name(ref_table)
             step      = f"Source_{table_name}"
-            lines.append(
-                f"    {step} = {safe_ref},"
-                f"  // RESIDENT LOAD from {ref_table}"
-            )
+            lines.append(f"    {step} = {safe_ref},  // RESIDENT LOAD from {ref_table}")
             return step
 
-        # ── FILE SOURCE(S) ────────────────────────────────────────────
-        if file_sources:
-            # One source → simple naming; multiple → indexed
-            if len(file_sources) == 1:
-                src         = file_sources[0]
-                mapped_path = file_paths.get(
-                   src["path"],
-                   src["path"]
-                )
+        # Get values passed from frontend via request mapping variables
+        platform = file_paths.get("platform_type", "Excel Workbook (.xlsx)")
+        connection = file_paths.get("connection_details", "").strip()
 
-                mapped_path = (
-                   mapped_path
-                   .strip()
-                   .replace('\\"', '')
-                   .replace('"', '')
-                   .replace("\\", "/")
-                )
-                sheet_name  = src.get("sheet")
-                step_src    = f"Source_{table_name}"
-                step_data   = f"Source_{table_name}_Data"
-                step_hdr    = f"Source_{table_name}_Headers"
+        search_text = f"{platform} {connection} " + " ".join([str(s.get("path", "")) for s in sources])
+        if table_blocks := file_paths.get("table_blocks", []):
+            search_text += " " + (json.dumps(table_blocks) if isinstance(table_blocks, list) else str(table_blocks))
 
-                if sheet_name:
-                    step_sheet = f"Source_{table_name}_Sheet"
-                    lines.extend([
-                        f'    {step_src} = Excel.Workbook(File.Contents("{mapped_path}"), null, true),',
-                        f'    {step_sheet} = try {step_src}{{[Item="{sheet_name}", Kind="Sheet"]}}'
-                        f' otherwise {step_src}{{0}}, // expected sheet: "{sheet_name}"',
-                        f"    {step_data} = {step_sheet}[Data],",
-                        f"    {step_hdr} = Table.PromoteHeaders({step_data}, [PromoteAllScalars=true]),",
-                    ])
-                else:
-                    lines.extend([
-                        f'    {step_src} = Excel.Workbook(File.Contents("{mapped_path}"), null, true),',
-                        f"    {step_data} = {step_src}{{0}}[Data],",
-                        f"    {step_hdr} = Table.PromoteHeaders({step_data}, [PromoteAllScalars=true]),",
-                    ])
-                return step_hdr
+        detected_conn = None
+        detected_args = None
+        
+        connectors_priority = [
+            "MySQL.Database", "PostgreSQL.Database", "Excel.Workbook", "Csv.Document",
+            "Sql.Database"
+        ]
+        
+        # Scan for existing connector definitions
+        for conn in connectors_priority:
+            if conn in search_text:
+                pos = search_text.find(conn)
+                open_p = search_text.find("(", pos)
+                if open_p != -1:
+                    count = 0
+                    close_p = -1
+                    for i in range(open_p, len(search_text)):
+                        if search_text[i] == '(':
+                            count += 1
+                        elif search_text[i] == ')':
+                            count -= 1
+                            if count == 0:
+                                close_p = i
+                                break
+                    if close_p != -1:
+                        detected_conn = conn
+                        detected_args = search_text[open_p+1:close_p].strip()
+                        
+                        # Anti-nesting loop validation check
+                        for inner_c in connectors_priority:
+                            if inner_c in detected_args:
+                                inner_pos = detected_args.find(inner_c)
+                                inner_open = detected_args.find("(", inner_pos)
+                                if inner_open != -1:
+                                    inner_count = 0
+                                    inner_close = -1
+                                    for j in range(inner_open, len(detected_args)):
+                                        if detected_args[j] == '(':
+                                            inner_count += 1
+                                        elif detected_args[j] == ')':
+                                            inner_count -= 1
+                                            if inner_count == 0:
+                                                inner_close = j
+                                                break
+                                    if inner_close != -1:
+                                        detected_conn = inner_c
+                                        detected_args = detected_args[inner_open+1:inner_close].strip()
+                        break
 
+        # Fallback to UI explicit routing maps if expressions remain unpopulated
+        if not detected_conn:
+            platform_low = platform.lower()
+            if "sql server" in platform_low:
+                detected_conn = "Sql.Database"
+            elif "postgresql" in platform_low:
+                detected_conn = "PostgreSQL.Database"
+            elif "mysql" in platform_low:
+                detected_conn = "MySQL.Database"
+            elif "csv" in platform_low:
+                detected_conn = "Csv.Document"
+            elif "sharepoint" in platform_low:
+                detected_conn = "SharePoint.Files"
             else:
-                # Multiple files — load each and combine
-                source_headers = []
-                for i, src in enumerate(file_sources, start=1):
-                    mapped_path = file_paths.get(
-                     src["path"],
-                     src["path"]
-                    )
+                detected_conn = "Excel.Workbook"
 
-                    mapped_path = (
-                     mapped_path
-                     .strip()
-                      .replace('\\"', '')
-                     .replace('"', '')
-                     .replace("\\", "/")
-                   )
-                    sheet_name = src.get("sheet")
-                    s_src  = f"Source_{table_name}_{i}"
-                    s_data = f"Source_{table_name}_{i}_Data"
-                    s_hdr  = f"Source_{table_name}_{i}_Headers"
+            if detected_conn in ["Sql.Database", "MySQL.Database", "PostgreSQL.Database"]:
+                server, database = parse_db_connection(connection)
+                detected_args = f'"{server}", "{database}"'
+            else:
+                # Sanitize outer string literal quotes from fallback setup
+                clean_conn = connection.strip().strip('"\'')
+                detected_args = f'"{clean_conn}"' if clean_conn else f'"{table_name}.xlsx"'
 
-                    if sheet_name:
-                        s_sheet = f"Source_{table_name}_{i}_Sheet"
-                        lines.extend([
-                            f'    {s_src} = Excel.Workbook(File.Contents("{mapped_path}"), null, true),',
-                            f'    {s_sheet} = try {s_src}{{[Item="{sheet_name}", Kind="Sheet"]}}'
-                            f' otherwise {s_src}{{0}}, // expected sheet: "{sheet_name}"',
-                            f"    {s_data} = {s_sheet}[Data],",
-                            f"    {s_hdr} = Table.PromoteHeaders({s_data}, [PromoteAllScalars=true]),",
-                        ])
-                    else:
-                        lines.extend([
-                            f'    {s_src} = Excel.Workbook(File.Contents("{mapped_path}"), null, true),',
-                            f"    {s_data} = {s_src}{{0}}[Data],",
-                            f"    {s_hdr} = Table.PromoteHeaders({s_data}, [PromoteAllScalars=true]),",
-                        ])
-                    source_headers.append(s_hdr)
+        # Extract Schema and Item metadata dynamically without hardcoding fallbacks
+        schema_val = None
+        item_val = None
+        
+        schema_match = re.search(r'Schema\s*=\s*"([^"]+)"', search_text, re.IGNORECASE)
+        if not schema_match:
+            schema_match = re.search(r"Schema\s*=\s*'([^']+)'", search_text, re.IGNORECASE)
+        item_match = re.search(r'Item\s*=\s*"([^"]+)"', search_text, re.IGNORECASE)
+        if not item_match:
+            item_match = re.search(r"Item\s*=\s*'([^']+)'", search_text, re.IGNORECASE)
+            
+        if schema_match:
+            schema_val = schema_match.group(1)
+        if item_match:
+            item_val = item_match.group(1)
+            
+        # Context extraction fallbacks
+        if not schema_val:
+            server, database = parse_db_connection(connection)
+            if database and database != "Master":
+                schema_val = database
 
-                combined = f"Combined_{table_name}"
-                combine_expr = ", ".join(source_headers)
-                lines.append(
-                    f"    {combined} = Table.Combine({{{combine_expr}}}),"
-                )
-                return combined
+        if not item_val:
+            if sources and isinstance(sources[0], dict):
+                item_val = sources[0].get("sheet") or sources[0].get("path")
+            if not item_val or "/" in str(item_val) or "\\" in str(item_val):
+                item_val = table_name
 
-        # ── FALLBACK: empty table shell ───────────────────────────────
-        column_names = self._unique_column_names(columns)
-        if not column_names:
-            column_names = ["Column1"]
+        step_src = f"Source_{table_name}"
+        step_data = f"Source_{table_name}_Data"
+        has_promote = "Table.PromoteHeaders" in search_text
 
-        col_defs = ", ".join(f"{n}=any" for n in column_names)
-        step = f"Source_{table_name}"
-        lines.append(
-            f"    {step} = #table(type table [{col_defs}], {{}}),"
-        )
-        return step
+        is_database = detected_conn in ["MySQL.Database", "Sql.Database", "PostgreSQL.Database", "Oracle.Database", "Odbc.DataSource", "Snowflake.Databases", "Databricks.Catalogs"]
+
+        if is_database:
+            lines.append(f'    {step_src} = {detected_conn}({detected_args}),')
+            if schema_val:
+                lines.append(f'    {step_data} = {step_src}{{[Schema="{schema_val}", Item="{item_val}"]}}[Data],')
+            else:
+                lines.append(f'    {step_data} = {step_src}{{[Item="{item_val}"]}}[Data],')
+            
+            if has_promote:
+                step_hdr = f"Source_{table_name}_Headers"
+                lines.append(f'    {step_hdr} = Table.PromoteHeaders({step_data}, [PromoteAllScalars=true]),')
+                return step_hdr
+            return step_data
+
+        elif detected_conn == "Excel.Workbook":
+            args_str = detected_args.strip()
+            # Clean and isolate duplicated outer string literal quotes from path definitions
+            if "File.Contents" in args_str:
+                match = re.match(r'File\.Contents\((.*)\)', args_str, re.IGNORECASE)
+                if match:
+                    inner_path = match.group(1).strip().strip('"\'')
+                    args_str = f'File.Contents("{inner_path}")'
+            else:
+                raw_path = args_str.strip('"\'')
+                args_str = f'File.Contents("{raw_path}")'
+
+            step_sheet = f"Source_{table_name}_Sheet"
+            step_hdr = f"Source_{table_name}_Headers"
+            lines.extend([
+                f'    {step_src} = Excel.Workbook({args_str}, null, true),',
+                f'    {step_sheet} = try {step_src}{{[Item="{item_val}", Kind="Sheet"]}} otherwise {step_src}{{0}},',
+                f'    {step_data} = {step_sheet}[Data],',
+            ])
+            lines.append(f'    {step_hdr} = Table.PromoteHeaders({step_data}, [PromoteAllScalars=true]),')
+            return step_hdr
+
+        elif detected_conn == "Csv.Document":
+            args_str = detected_args.strip()
+            # Clean and isolate duplicated outer string literal quotes from path definitions
+            if "File.Contents" in args_str:
+                match = re.match(r'File\.Contents\((.*)\)', args_str, re.IGNORECASE)
+                if match:
+                    inner_path = match.group(1).strip().strip('"\'')
+                    args_str = f'File.Contents("{inner_path}")'
+            else:
+                raw_path = args_str.strip('"\'')
+                args_str = f'File.Contents("{raw_path}")'
+
+            step_hdr = f"Source_{table_name}_Headers"
+            lines.extend([
+                f'    {step_src} = Csv.Document({args_str}, [Delimiter=",", Encoding=1252, QuoteStyle=QuoteStyle.None]),',
+                f'    {step_hdr} = Table.PromoteHeaders({step_src}, [PromoteAllScalars=true]),'
+            ])
+            return step_hdr
+
+        else:
+            lines.append(f'    {step_src} = {detected_conn}({detected_args}),')
+            return step_src
 
     # ------------------------------------------------------------------
 
@@ -280,13 +386,10 @@ class MGenerator:
         current_step: str,
         table_name: str,
     ) -> str:
-        """
-        Emit a Table.TransformColumnTypes step when columns carry
-        explicit type information.
-        """
+        """Emit a Table.TransformColumnTypes step when columns carry explicit type information."""
         type_pairs = []
         for col in columns:
-            name = col.get("name", "").strip()
+            name = col.get("name", "").strip() if isinstance(col, dict) else str(col).strip()
             if not name:
                 continue
             name_lower = name.lower()
@@ -304,60 +407,28 @@ class MGenerator:
         if type_pairs:
             pair_text = ", ".join(type_pairs)
             step = f"Typed_{table_name}"
-            lines.append(
-                f"    {step} = Table.TransformColumnTypes({current_step}, {{{pair_text}}}),"
-            )
+            lines.append(f"    {step} = Table.TransformColumnTypes({current_step}, {{{pair_text}}}),")
             return step
 
         return current_step
 
-    # ------------------------------------------------------------------
-
-    def _emit_filters(
-        self,
-        lines: list,
-        filters: list,
-        current_step: str,
-    ) -> str:
+    def _emit_filters(self, lines: list, filters: list, current_step: str) -> str:
         """Emit one Table.SelectRows step per WHERE clause."""
-
         step = current_step
         for i, f in enumerate(filters, start=1):
             expr     = f.get("expression", "true")
             new_step = f"FilteredRows_{i}" if len(filters) > 1 else "FilteredRows"
-            # Emit as a comment-annotated pass-through so the user can
-            # fill in the real row condition.
-            lines.append(
-                f'    {new_step} = Table.SelectRows({step},'
-                f' each true), // WHERE {expr}'
-            )
+            lines.append(f'    {new_step} = Table.SelectRows({step}, each true), // WHERE {expr}')
             step = new_step
-
         return step
 
-    # ------------------------------------------------------------------
-
-    def _emit_select_columns(
-        self,
-        lines: list,
-        column_names: list,
-        current_step: str,
-    ) -> str:
+    def _emit_select_columns(self, lines: list, column_names: list, current_step: str) -> str:
         cols = ", ".join(f'"{c}"' for c in column_names)
         step = "SelectedColumns"
-        lines.append(
-            f"    {step} = Table.SelectColumns({current_step}, {{{cols}}}),"
-        )
+        lines.append(f"    {step} = Table.SelectColumns({current_step}, {{{cols}}}),")
         return step
 
-    # ------------------------------------------------------------------
-
-    def _emit_renames(
-        self,
-        lines: list,
-        rename_fields: list,
-        current_step: str,
-    ) -> str:
+    def _emit_renames(self, lines: list, rename_fields: list, current_step: str) -> str:
         rename_pairs = []
         for rf in rename_fields:
             mapping = rf.get("mapping", "")
@@ -370,21 +441,11 @@ class MGenerator:
         if rename_pairs:
             pair_text = ", ".join(rename_pairs)
             step = "RenamedColumns"
-            lines.append(
-                f"    {step} = Table.RenameColumns({current_step}, {{{pair_text}}}),"
-            )
+            lines.append(f"    {step} = Table.RenameColumns({current_step}, {{{pair_text}}}),")
             return step
-
         return current_step
 
-    # ------------------------------------------------------------------
-
-    def _emit_drops(
-        self,
-        lines: list,
-        drop_fields: list,
-        current_step: str,
-    ) -> str:
+    def _emit_drops(self, lines: list, drop_fields: list, current_step: str) -> str:
         all_fields = []
         for df in drop_fields:
             all_fields.extend(df.get("fields", []))
@@ -392,21 +453,11 @@ class MGenerator:
         if all_fields:
             field_text = ", ".join(f'"{f}"' for f in all_fields)
             step = "DroppedColumns"
-            lines.append(
-                f"    {step} = Table.RemoveColumns({current_step}, {{{field_text}}}),"
-            )
+            lines.append(f"    {step} = Table.RemoveColumns({current_step}, {{{field_text}}}),")
             return step
-
         return current_step
 
-    # ------------------------------------------------------------------
-
-    def _emit_group_by(
-        self,
-        lines: list,
-        aggregations: list,
-        current_step: str,
-    ) -> str:
+    def _emit_group_by(self, lines: list, aggregations: list, current_step: str) -> str:
         all_groups = []
         all_aggs   = []
         for agg in aggregations:
@@ -416,21 +467,8 @@ class MGenerator:
         if all_groups:
             group_text = ", ".join(f'"{g}"' for g in all_groups)
 
-            agg_func_map = {
-                "Sum":   "List.Sum",
-                "Count": "List.Count",
-                "Avg":   "List.Average",
-                "Min":   "List.Min",
-                "Max":   "List.Max",
-            }
-
-            agg_type_map = {
-                "Sum":   "type nullable number",
-                "Count": "Int64.Type",
-                "Avg":   "type nullable number",
-                "Min":   "type any",
-                "Max":   "type any",
-            }
+            agg_func_map = {"Sum": "List.Sum", "Count": "List.Count", "Avg": "List.Average", "Min": "List.Min", "Max": "List.Max"}
+            agg_type_map = {"Sum": "type nullable number", "Count": "Int64.Type", "Avg": "type nullable number", "Min": "type any", "Max": "type any"}
 
             agg_entries = []
             for a in all_aggs:
@@ -440,29 +478,20 @@ class MGenerator:
                 m_func = agg_func_map.get(func)
                 m_type = agg_type_map.get(func, "type any")
                 if m_func:
-                    agg_entries.append(
-                        f'{{"{alias}", each {m_func}([{field}]), {m_type}}}'
-                    )
+                    agg_entries.append(f'{{"{alias}", each {m_func}([{field}]), {m_type}}}')
 
             agg_text = ", ".join(agg_entries)
             step = "GroupedRows"
-            lines.append(
-                f"    {step} = Table.Group({current_step}, {{{group_text}}}, {{{agg_text}}}),"
-            )
+            lines.append(f"    {step} = Table.Group({current_step}, {{{group_text}}}, {{{agg_text}}}),")
             return step
-
         return current_step
-
-    # ------------------------------------------------------------------
-    # UTILITIES
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _unique_column_names(columns: list) -> list:
         seen = set()
         result = []
         for col in columns:
-            name = col.get("name", "").strip()
+            name = col.get("name", "").strip() if isinstance(col, dict) else str(col).strip()
             if name and name not in seen:
                 seen.add(name)
                 result.append(name)
@@ -470,8 +499,6 @@ class MGenerator:
 
     @staticmethod
     def _safe_step_name(name: str) -> str:
-        """Convert a Qlik table name to a valid M identifier."""
-        import re
         safe = re.sub(r"[^A-Za-z0-9_]", "_", name)
         if safe and safe[0].isdigit():
             safe = "_" + safe
@@ -479,13 +506,7 @@ class MGenerator:
 
     @staticmethod
     def _build_legacy_block(analysis: dict) -> list:
-        """
-        Builds dynamic synthetic blocks from flat or nested analysis metadata
-        so that separate tables retain their identity during fallback parsing.
-        """
         metadata = analysis.get("metadata", {})
-        
-        # Case 1: If metadata is a direct dictionary of tables (like your target schema JSON format)
         if isinstance(metadata, dict) and any(isinstance(v, dict) and "columns" in v for v in metadata.values()):
             blocks = []
             for t_name, t_data in metadata.items():
@@ -493,76 +514,32 @@ class MGenerator:
                     blocks.append({
                         "table": {"name": t_name, "line": 0},
                         "columns": t_data.get("columns", []),
-                        "sources": [
-                            {"path": s.get("path", ""), "type": "FILE"}
-                            for s in analysis.get("source_files", [])
-                        ],
-                        "filters": [],
-                        "aggregations": [],
-                        "joins": analysis.get("joins", []),
-                        "rename_fields": [],
-                        "drop_fields": [],
-                        "is_resident": False,
-                        "transformations": []
+                        "sources": [{"path": s.get("path", ""), "type": "FILE"} for s in analysis.get("source_files", [])],
+                        "filters": [], "aggregations": [], "joins": analysis.get("joins", []),
+                        "rename_fields": [], "drop_fields": [], "is_resident": False, "transformations": []
                     })
-            if blocks:
-                return blocks
+            if blocks: return blocks
 
-        # Case 2: If metadata contains a traditional list under the "tables" key
         if isinstance(metadata, dict) and "tables" in metadata and isinstance(metadata["tables"], list):
             blocks = []
             for tbl in metadata["tables"]:
-                if isinstance(tbl, dict):
-                    t_name = tbl.get("name", "Query")
-                    t_cols = tbl.get("columns", [])
-                else:
-                    t_name = str(tbl)
-                    t_cols = []
-                    
+                t_name = tbl.get("name", "Query") if isinstance(tbl, dict) else str(tbl)
+                t_cols = tbl.get("columns", []) if isinstance(tbl, dict) else []
                 blocks.append({
-                    "table": {"name": t_name, "line": 0},
-                    "columns": t_cols,
-                    "sources": [
-                        {"path": s.get("path", ""), "type": "FILE"}
-                        for s in analysis.get("source_files", [])
-                    ],
-                    "filters": metadata.get("filters", []),
-                    "aggregations": metadata.get("aggregations", []),
-                    "joins": analysis.get("joins", []),
-                    "rename_fields": metadata.get("rename_fields", []),
-                    "drop_fields":   metadata.get("drop_fields", []),
-                    "is_resident":   False,
-                    "transformations": [
-                        {"operation": op, "type": op}
-                        for op in analysis.get("operations", [])
-                    ]
+                    "table": {"name": t_name, "line": 0}, "columns": t_cols,
+                    "sources": [{"path": s.get("path", ""), "type": "FILE"} for s in analysis.get("source_files", [])],
+                    "filters": metadata.get("filters", []), "aggregations": metadata.get("aggregations", []),
+                    "joins": analysis.get("joins", []), "rename_fields": metadata.get("rename_fields", []),
+                    "drop_fields": metadata.get("drop_fields", []), "is_resident": False,
+                    "transformations": [{"operation": op, "type": op} for op in analysis.get("operations", [])]
                 })
             return blocks
 
-        # Case 3: Ultimate fallback to a single generic block if no table splits are found
-        return [
-            {
-                "table":       {"name": "Query", "line": 0},
-                "columns":     metadata.get("columns", []),
-                "sources":     [
-                    {"path": s.get("path", ""), "type": "FILE"}
-                    for s in analysis.get("source_files", [])
-                ],
-                "filters":     metadata.get("filters", []),
-                "aggregations": metadata.get("aggregations", []),
-                "joins":       analysis.get("joins", []),
-                "rename_fields": metadata.get("rename_fields", []),
-                "drop_fields":   metadata.get("drop_fields", []),
-                "is_resident":   False,
-                "transformations": [
-                    {"operation": op, "type": op}
-                    for op in analysis.get("operations", [])
-                ]
-            }
-        ]
-
-
-# ---------------------------------------------------------------------------
-# re is used inside _emit_renames — import at module level for safety
-# ---------------------------------------------------------------------------
-import re  # noqa: E402
+        return [{
+            "table": {"name": "Query", "line": 0}, "columns": metadata.get("columns", []),
+            "sources": [{"path": s.get("path", ""), "type": "FILE"} for s in analysis.get("source_files", [])],
+            "filters": metadata.get("filters", []), "aggregations": metadata.get("aggregations", []),
+            "joins": analysis.get("joins", []), "rename_fields": metadata.get("rename_fields", []),
+            "drop_fields": metadata.get("drop_fields", []), "is_resident": False,
+            "transformations": [{"operation": op, "type": op} for op in analysis.get("operations", [])]
+        }]
