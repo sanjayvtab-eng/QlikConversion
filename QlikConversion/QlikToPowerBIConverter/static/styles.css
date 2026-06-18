@@ -1,3 +1,107 @@
+/* ══════════════════════════════════════════════════════════════
+   ✨ PREMIUM CUSTOM ANIMATED DROPDOWN STYLES
+   ══════════════════════════════════════════════════════════════ */
+.custom-select-container {
+    position: relative;
+    width: 100%;
+}
+
+/* Hidden fallback element state */
+.hidden-native-select {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+.custom-select-trigger {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    background-color: white;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    user-select: none;
+}
+
+.custom-select-trigger:hover {
+    border-color: var(--border-dash);
+}
+
+.custom-select-trigger::after {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--text-secondary);
+    border-bottom: 2px solid var(--text-secondary);
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Flipped arrow animation state */
+.custom-select-container.open .custom-select-trigger::after {
+    transform: rotate(-135deg) translateY(2px);
+}
+
+/* Dropdown floating options menu container */
+.custom-select-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    width: 100%;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 16px -6px rgba(0, 0, 0, 0.04);
+    z-index: 999;
+    padding: 0.35rem;
+    list-style: none;
+    
+    /* Animation Core Properties: Slide up and fade out by default */
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px) scale(0.98);
+    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                transform 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+                visibility 0.2s;
+}
+
+/* Open dropdown animation state */
+.custom-select-container.open .custom-select-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+}
+
+.custom-select-item {
+    padding: 0.65rem 0.75rem;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.custom-select-item:hover {
+    background-color: var(--primary-light);
+    color: var(--primary-blue);
+}
+
+.custom-select-item.selected {
+    background-color: var(--primary-blue);
+    color: white;
+    font-weight: 600;
+}
 :root {
     --bg-color: #f8faff;
     --text-primary: #1a1a2e;

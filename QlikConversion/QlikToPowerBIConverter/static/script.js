@@ -1,4 +1,75 @@
 document.addEventListener('DOMContentLoaded', () => {
+// ══════════════════════════════════════════════════════════════
+    // 🛠️ CUSTOM ANIMATED SELECT WRAPPER HANDLER (FIXED)
+    // ══════════════════════════════════════════════════════════════
+    const customSelectWrapper = document.getElementById('customSelectPlatform');
+    const customTrigger = document.getElementById('customSelectTrigger');
+    const nativeSelect = document.getElementById('platform_type');
+
+    if (customSelectWrapper && customTrigger && nativeSelect) {
+        const triggerText = customTrigger.querySelector('span');
+        const customItems = customSelectWrapper.querySelectorAll('.custom-select-item');
+
+        // Toggle open/closed state dropdown layout menu on click
+        customTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            customSelectWrapper.classList.toggle('open');
+        });
+
+        // Option item click execution block handler
+        customItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                const selectedValue = item.getAttribute('data-value');
+                const selectedText = item.textContent;
+
+                // Sync UI state layouts text
+                triggerText.textContent = selectedText;
+                
+                // Clear old active styles and apply to current element target
+                customItems.forEach(i => i.classList.remove('selected'));
+                item.classList.add('selected');
+
+                // Synchronize selection context seamlessly down to native select
+                nativeSelect.value = selectedValue;
+
+                // Fire native 'change' event to trigger placeholder routers immediately
+                nativeSelect.dispatchEvent(new Event('change'));
+
+                // Close layout panel gracefully
+                customSelectWrapper.classList.remove('open');
+            });
+        });
+
+        // Close dropdown menu if user clicks anywhere else outside the active region
+        document.addEventListener('click', (e) => {
+            if (!customSelectWrapper.contains(e.target)) {
+                customSelectWrapper.classList.remove('open');
+            }
+        });
+    }
+    // ══════════════════════════════════════════════════════════════
+    // 🔄 DYNAMIC PLACEHOLDER ROUTER FOR CONNECTION DETAILS
+    // ══════════════════════════════════════════════════════════════
+    const platformTypeSelect = document.getElementById('platform_type');
+    const connectionDetailsInput = document.getElementById('connection_details');
+
+    if (platformTypeSelect && connectionDetailsInput) {
+        const platformPlaceholders = {
+            "Microsoft SQL Server": 'e.g., Server=SHANJI\\SQLEXPRESS;Database=LoanManagement;Schema="dbo";Item="Loans"',
+            "Excel Workbook (.xlsx)": 'e.g., C:\\Users\\username\\Downloads\\SampleData.xlsx;Item="Customers"',
+            "Flat CSV Document (.csv)": 'e.g., C:\\Users\\username\\Documents\\DailySales.csv',
+            "JSON Files (.json)": 'e.g., C:\\Users\\username\\Downloads\\SampleData.json',
+            "PostgreSQL Database": 'e.g., Host=localhost;Database=loan_management;Schema="public";Item="loans"',
+            "MySQL Database": 'e.g., Server=localhost;Database=loan_management;Item="loans"',
+            "SharePoint Team Folder": 'e.g., https://company.sharepoint.com/sites/FinanceTeam'
+        };
+
+        // Update placeholder instantly when user flips the dropdown menu selection
+        platformTypeSelect.addEventListener('change', (e) => {
+            const selectedPlatform = e.target.value;
+            connectionDetailsInput.placeholder = platformPlaceholders[selectedPlatform] || 'Enter connection details...';
+        });
+    }
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const browseBtn = document.getElementById('browseBtn');
@@ -142,29 +213,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('sourceCode').textContent = currentRawText;
                 
                 // Build mapping inputs
-                const mappingBox = document.getElementById('mappingBox');
-                if (data.detected_sources && data.detected_sources.length > 0) {
-                    let html = '<p style="color:var(--text-secondary); margin-bottom: 1rem;">Detected ' + data.detected_sources.length + ' source file(s)</p>';
-                    data.detected_sources.forEach((src, idx) => {
-                        html += `
-                            <div style="margin-bottom: 1rem;">
-                                <label style="display:block; font-size: 0.85rem; color:var(--text-secondary); margin-bottom: 0.5rem;">Power BI Path for ${src}</label>
-                                <input type="text" class="mapping-input" data-source="${src}" placeholder="C:\\\\Data\\\\YourFile.xlsx" style="width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-body);">
-                            </div>
-                        `;
-                    });
-                    mappingBox.innerHTML = html;
-                } else {
-                    mappingBox.innerHTML = `
-                        <p style="color:var(--text-secondary); margin-bottom: 1rem;">No source files detected automatically.</p>
-                        <div style="margin-bottom: 1rem;">
-                            <label style="display:block; font-size: 0.85rem; color:var(--text-secondary); margin-bottom: 0.5rem;">Manual Source Name</label>
-                            <input type="text" id="manualSourceName" placeholder="SalesData" style="width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-body); margin-bottom: 1rem;">
-                            <label style="display:block; font-size: 0.85rem; color:var(--text-secondary); margin-bottom: 0.5rem;">Power BI Path</label>
-                            <input type="text" id="manualSourcePath" placeholder="C:\\\\Data\\\\YourFile.xlsx" style="width: 100%; padding: 0.75rem; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-body);">
-                        </div>
-                    `;
-                }
+                // Code view visibility trigger block
+                document.getElementById('mappingContainer').classList.remove('hidden');
+                document.getElementById('sourceCode').textContent = currentRawText;
 
                 resetDropZone();
                 document.getElementById('dropZone').innerHTML = `<div class="upload-icon">✓</div><h3>File uploaded successfully</h3><p>Scroll down to map files and generate code.</p>`;
@@ -202,12 +253,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            // NEW: Fetch input values from the Data Platform UI components
+            const platformType = document.getElementById('platform_type').value;
+            const connectionDetails = document.getElementById('connection_details').value;
+
+            // Safe fallback: append parameters directly to file_mappings dictionary too
+            file_mappings["platform_type"] = platformType;
+            file_mappings["connection_details"] = connectionDetails;
+
             const response = await fetch('/api/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     raw_text: currentRawText,
-                    file_mappings: file_mappings
+                    file_mappings: file_mappings,
+                    platform_type: platformType,         // Sent to match Pydantic Schema model
+                    connection_details: connectionDetails // Sent to match Pydantic Schema model
                 })
             });
 
